@@ -56,6 +56,24 @@ fn at(t: &S, secs: u64) {
 }
 
 #[test]
+fn publish_and_chapters_award_wave_points_once_per_day() {
+    let t = setup();
+    let id = publish(&t);
+    assert_eq!(t.ink.novel(&id).title, s(&t.env, "The Rust Chronicles"));
+    assert!(t.ink.is_owned(&t.author, &id));
+
+    assert_eq!(t.ink.add_chapter(&id, &s(&t.env, "Ch 1"), &s(&t.env, "It was a dark and stormy compile.")), 0);
+    assert_eq!(t.ink.add_chapter(&id, &s(&t.env, "Ch 2"), &s(&t.env, "...")), 1); // same day: no extra points
+    assert_eq!(t.wave.points_of(&1, &t.author), 100);
+    at(&t, DAY);
+    t.ink.add_chapter(&id, &s(&t.env, "Ch 3"), &s(&t.env, "..."));
+    assert_eq!(t.wave.points_of(&1, &t.author), 200);
+    assert_eq!(t.ink.novel(&id).chapters, 3);
+    assert_eq!(t.ink.chapter(&id, &0).title, s(&t.env, "Ch 1"));
+    assert_eq!(t.ink.try_chapter(&id, &9), Err(Ok(err(Error::ChapterNotFound))));
+}
+
+#[test]
 fn list_novels_newest_first() {
     let t = setup();
     for _ in 0..3 {

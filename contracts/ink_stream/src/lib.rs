@@ -322,6 +322,28 @@ impl InkStream {
         put(&env, &DataKey::Novel(id), &n);
     }
 
+    /// Adds a chapter. Earns Wave "Chapter" points at most once per novel per day.
+    pub fn add_chapter(env: Env, id: u32, title: String, body: String) -> u32 {
+        let mut n = load_novel(&env, id);
+        n.author.require_auth();
+        check_len(&env, &title, MAX_TITLE);
+        check_len(&env, &body, MAX_CHAPTER_BYTES);
+        let index = n.chapters;
+        let now = env.ledger().timestamp();
+        put(&env, &DataKey::Chapter(id, index), &Chapter { title: title.clone(), body, published_at: now });
+        n.chapters += 1;
+        put(&env, &DataKey::Novel(id), &n);
+
+        let rkey = DataKey::LastChapterReward(id);
+        let last: Option<u64> = env.storage().persistent().get(&rkey);
+        if last.is_none_or(|t| now >= t + DAY) {
+            put(&env, &rkey, &now);
+            wave(&env, Action::Chapter, &n.author, 1);
+        }
+        ChapterAdded { id, index, title }.publish(&env);
+        index
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
     pub fn config(env: Env) -> Config {
         config(&env)
@@ -347,6 +369,13 @@ impl InkStream {
             id -= 1;
         }
         out
+    }
+
+    pub fn chapter(env: Env, id: u32, index: u32) -> Chapter {
+        let key = DataKey::Chapter(id, index);
+        let c: Chapter = env.storage().persistent().get(&key).unwrap_or_else(|| panic_with_error!(&env, Error::ChapterNotFound));
+        env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        c
     }
 
     pub fn is_owned(env: Env, reader: Address, id: u32) -> bool {
