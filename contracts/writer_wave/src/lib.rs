@@ -260,6 +260,25 @@ impl WriterWave {
         bump_instance(&env);
     }
 
+    /// Open a new Writing Sprint. Sprints can't overlap.
+    pub fn start_cycle(env: Env, name: String, start: u64, end: u64, token: Address) -> u32 {
+        admin(&env).require_auth();
+        if end <= start || end <= env.ledger().timestamp() {
+            panic_with_error!(&env, Error::InvalidWindow);
+        }
+        let count: u32 = env.storage().instance().get(&DataKey::CycleCount).unwrap_or(0);
+        if count > 0 && start < get_cycle(&env, count).end {
+            panic_with_error!(&env, Error::Overlap);
+        }
+        let id = count + 1;
+        let c = Cycle { id, name: name.clone(), start, end, token: token.clone(), pool: 0, total_points: 0, participants: 0, claimed: 0 };
+        put(&env, &DataKey::Cycle(id), &c);
+        env.storage().instance().set(&DataKey::CycleCount, &id);
+        bump_instance(&env);
+        CycleStarted { cycle: id, name, start, end, token }.publish(&env);
+        id
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
     pub fn admin(env: Env) -> Address {
         admin(&env)
@@ -276,5 +295,17 @@ impl WriterWave {
 
     pub fn is_reporter(env: Env, reporter: Address) -> bool {
         env.storage().instance().has(&DataKey::Reporter(reporter))
+    }
+
+    pub fn cycle_count(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::CycleCount).unwrap_or(0)
+    }
+
+    pub fn cycle(env: Env, id: u32) -> Cycle {
+        get_cycle(&env, id)
+    }
+
+    pub fn live(env: Env) -> Option<Cycle> {
+        live_cycle(&env)
     }
 }
