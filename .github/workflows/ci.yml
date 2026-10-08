@@ -18,7 +18,9 @@ jobs:
         with: { workspaces: contracts }
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo build --release --target wasm32v1-none
+      # soroban-sdk 28 only builds contract wasm through the Stellar CLI
+      - uses: stellar/stellar-cli@v28.1.0
+      - run: stellar contract build
       - uses: actions/upload-artifact@v4
         with:
           name: wasm
