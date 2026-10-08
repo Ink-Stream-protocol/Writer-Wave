@@ -279,6 +279,37 @@ impl WriterWave {
         id
     }
 
+    /// Called by a trusted reporter contract. Returns points added (0 if no sprint is live).
+    pub fn record(env: Env, reporter: Address, action: Action, user: Address, units: u32) -> u64 {
+        reporter.require_auth();
+        if !env.storage().instance().has(&DataKey::Reporter(reporter)) {
+            panic_with_error!(&env, Error::NotReporter);
+        }
+        let Some(mut c) = live_cycle(&env) else { return 0 };
+        let mut pts = points_for(&env, action) as u64 * units as u64;
+        add_points(&env, &mut c, &user, action, pts);
+
+        // Consistency: an extra bonus each consecutive week with at least one chapter.
+        if action == Action::Chapter {
+            let week = (env.ledger().timestamp() - c.start) / WEEK;
+            let skey = DataKey::Streak(c.id, user.clone());
+            let prev: Option<StreakState> = env.storage().persistent().get(&skey);
+            let next = match prev {
+                Some(s) if s.week == week => s,
+                Some(s) if s.week + 1 == week => {
+                    let bonus = points_for(&env, Action::Streak) as u64 * s.length as u64;
+                    add_points(&env, &mut c, &user, Action::Streak, bonus);
+                    pts += bonus;
+                    StreakState { week, length: s.length + 1 }
+                }
+                _ => StreakState { week, length: 1 },
+            };
+            put(&env, &skey, &next);
+        }
+        put(&env, &DataKey::Cycle(c.id), &c);
+        pts
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
     pub fn admin(env: Env) -> Address {
         admin(&env)
@@ -308,4 +339,22 @@ impl WriterWave {
     pub fn live(env: Env) -> Option<Cycle> {
         live_cycle(&env)
     }
+
+    pub fn points_of(env: Env, cycle_id: u32, user: Address) -> u64 {
+        env.storage().persistent().get(&DataKey::UserPoints(cycle_id, user)).unwrap_or(0)
+    }
+
+    /// Everyone with points in a sprint (unsorted; the first 1,000 participants are listed).
+    pub fn standings(env: Env, cycle_id: u32) -> Vec<Standing> {
+        let list: Vec<Address> = env.storage().persistent().get(&DataKey::Participants(cycle_id)).unwrap_or(Vec::new(&env));
+        let mut out = Vec::new(&env);
+        for user in list.iter() {
+            let points = env.storage().persistent().get(&DataKey::UserPoints(cycle_id, user.clone())).unwrap_or(0);
+            out.push_back(Standing { user, points });
+        }
+        out
+    }
 }
+
+#[cfg(test)]
+mod test;
