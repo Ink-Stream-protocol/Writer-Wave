@@ -224,3 +224,55 @@ html.popup .quick { grid-template-columns: repeat(3, 1fr); }
 html.popup .cols, html.popup .grid2 { grid-template-columns: 1fr; }
 html.popup .theme-toggle { display: none; }
 html.popup .topbar h1 { font-size: 1.2rem; }
+
+/* ---------- InkStream ---------- */
+.side-group { font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 14px 12px 4px; opacity: .8; }
+.side { overflow-y: auto; }
+textarea.input { resize: vertical; line-height: 1.6; font-family: inherit; }
+pre.code { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 0; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; }
+.store-hero, .wave-hero { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; padding: 26px; border-radius: 22px; border: 1px solid var(--border2);
+  background: radial-gradient(700px 240px at 0% 0%, rgba(139, 92, 246, .22), transparent 60%), var(--panel); }
+.store-hero h2, .wave-hero h2 { font-size: 1.6rem; letter-spacing: -.02em; }
+.store-hero p { max-width: 560px; margin-top: 6px; }
+.wave-hero .pool { text-align: right; }
+.wave-hero .pool .big, .balance-card .big { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 800; letter-spacing: -.03em; }
+.book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
+.book { display: flex; flex-direction: column; gap: 10px; background: none; border: 0; padding: 0; text-align: left; }
+.book:hover .cover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(0,0,0,.35), var(--glow); }
+.book-meta { display: flex; flex-direction: column; gap: 6px; }
+.cover { position: relative; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden; border: 1px solid var(--border2); transition: transform .2s, box-shadow .2s; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cover-sm { width: 46px; flex: none; border-radius: 6px; }
+.cover-lg { width: 220px; flex: none; }
+.cover-text { position: absolute; inset: 0; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; }
+.cover-title { font-weight: 800; font-size: 1.05rem; line-height: 1.15; text-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.cover-sm .cover-text { padding: 4px; } .cover-sm .cover-title { font-size: .5rem; } .cover-sm .cover-author { display: none; }
+.cover-author { font-size: .7rem; opacity: .8; font-family: ui-monospace, monospace; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+.chip-buy { background: var(--accent-soft); color: var(--accent2); }
+.chip-stream { background: rgba(47, 214, 138, .12); color: var(--ok); }
+.novel-head { display: flex; gap: 28px; align-items: flex-start; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.stats > div { background: var(--panel2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; }
+.stats b { font-size: 1.15rem; } .stats small { color: var(--muted); font-size: .74rem; }
+.big-num { font-size: 1.8rem; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.big-num small { font-size: .9rem; color: var(--muted); font-weight: 500; }
+.meter { background: radial-gradient(400px 120px at 0% 0%, rgba(47, 214, 138, .14), transparent 70%), var(--panel2); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 4px; }
+.dot.pulse { display: inline-block; background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: pulse 1.4s ease-in-out infinite; margin-right: 4px; }
+@keyframes pulse { 50% { opacity: .35; } }
+.reader { max-width: 720px; margin: 0 auto; }
+.reader-bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 0; background: var(--bg); border-bottom: 1px solid var(--border); margin-bottom: 24px; flex-wrap: wrap; }
+.reader article h1 { font-size: 2rem; letter-spacing: -.02em; margin: 6px 0 22px; }
+.reader article p { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 1.15rem; line-height: 1.8; margin: 0 0 1.1em; }
+.board li.me { background: var(--accent-soft); border-radius: 10px; padding-left: 8px; padding-right: 8px; }
+.rank { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--panel2); font-weight: 700; font-size: .8rem; flex: none; }
+.rank.r1 { background: #f5b947; color: #2a1d00; } .rank.r2 { background: #c9cbd6; color: #1c1d22; } .rank.r3 { background: #d38b5d; color: #2a1206; }
+ol.list { padding: 0; }
+@media (max-width: 720px) {
+  .novel-head { flex-direction: column; }
+  .cover-lg { width: 160px; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .book-grid { grid-template-columns: repeat(2, 1fr); }
+  .wave-hero .pool { text-align: left; }
+}
