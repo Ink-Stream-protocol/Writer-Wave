@@ -1,7 +1,8 @@
 node_modules/
-.next/
 dist/
+dist-extension/
 target/
 *.wasm
 .env
 .env.local
+.DS_Store
