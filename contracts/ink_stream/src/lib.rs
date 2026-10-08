@@ -378,6 +378,77 @@ impl InkStream {
         due
     }
 
+    /// Put your copy up for resale at `price`. Re-listing updates the price.
+    pub fn list_resale(env: Env, seller: Address, id: u32, price: i128) {
+        seller.require_auth();
+        let n = load_novel(&env, id);
+        if seller == n.author || !owned(&env, &seller, id) {
+            panic_with_error!(&env, Error::NotOwner);
+        }
+        if price <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+        let key = DataKey::Listings(id);
+        let mut list: Vec<Listing> = env.storage().persistent().get(&key).unwrap_or(Vec::new(&env));
+        if let Some(i) = list.iter().position(|l| l.seller == seller) {
+            list.set(i as u32, Listing { seller: seller.clone(), price });
+        } else {
+            if list.len() >= MAX_LIST {
+                panic_with_error!(&env, Error::TooManyListings);
+            }
+            list.push_back(Listing { seller: seller.clone(), price });
+        }
+        put(&env, &key, &list);
+        Listed { id, seller, price }.publish(&env);
+    }
+
+    pub fn cancel_resale(env: Env, seller: Address, id: u32) {
+        seller.require_auth();
+        let key = DataKey::Listings(id);
+        let mut list: Vec<Listing> = env.storage().persistent().get(&key).unwrap_or(Vec::new(&env));
+        let i = list.iter().position(|l| l.seller == seller).unwrap_or_else(|| panic_with_error!(&env, Error::NotListed));
+        list.remove(i as u32);
+        put(&env, &key, &list);
+    }
+
+    /// Buy a listed second-hand copy. The author's royalty is enforced on-chain.
+    pub fn buy_resale(env: Env, buyer: Address, id: u32, seller: Address) -> i128 {
+        buyer.require_auth();
+        let mut n = load_novel(&env, id);
+        if buyer == seller {
+            panic_with_error!(&env, Error::SameParty);
+        }
+        if owned(&env, &buyer, id) {
+            panic_with_error!(&env, Error::AlreadyOwned);
+        }
+        let key = DataKey::Listings(id);
+        let mut list: Vec<Listing> = env.storage().persistent().get(&key).unwrap_or(Vec::new(&env));
+        let i = list.iter().position(|l| l.seller == seller).unwrap_or_else(|| panic_with_error!(&env, Error::NotListed));
+        let price = list.get(i as u32).unwrap().price;
+        list.remove(i as u32);
+        put(&env, &key, &list);
+        if !owned(&env, &seller, id) {
+            panic_with_error!(&env, Error::NotOwner); // stale listing
+        }
+        let royalty = price * n.royalty_bps as i128 / 10_000;
+        let t = token(&env);
+        if royalty > 0 {
+            t.transfer(&buyer, &n.author, &royalty);
+        }
+        t.transfer(&buyer, &seller, &(price - royalty));
+        env.storage().persistent().remove(&DataKey::Owned(seller.clone(), id));
+        set_owned(&env, &buyer, id);
+        n.earned += royalty;
+        put(&env, &DataKey::Novel(id), &n);
+        wave(&env, Action::Resale, &n.author, 1);
+        Resold { id, seller, buyer, price, royalty }.publish(&env);
+        price
+    }
+
+    pub fn listings(env: Env, id: u32) -> Vec<Listing> {
+        env.storage().persistent().get(&DataKey::Listings(id)).unwrap_or(Vec::new(&env))
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
     pub fn config(env: Env) -> Config {
         config(&env)

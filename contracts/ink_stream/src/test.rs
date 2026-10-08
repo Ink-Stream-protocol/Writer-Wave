@@ -86,6 +86,42 @@ fn buy_forever_pays_author_and_records_ownership() {
 }
 
 #[test]
+fn resale_listing_pays_royalty_and_moves_ownership() {
+    let t = setup();
+    let id = publish(&t);
+    t.ink.buy(&t.reader, &id);
+    let buyer = Address::generate(&t.env);
+    StellarAssetClient::new(&t.env, &t.token.address).mint(&buyer, &(100 * XLM));
+    t.ink.list_resale(&t.reader, &id, &(12 * XLM));
+    t.ink.list_resale(&t.reader, &id, &(10 * XLM)); // re-list updates price
+    assert_eq!(t.ink.listings(&id).len(), 1);
+    assert_eq!(t.ink.buy_resale(&buyer, &id, &t.reader), 10 * XLM);
+    assert_eq!(t.token.balance(&t.author), 21 * XLM); // 20 sale + 1 royalty
+    assert_eq!(t.token.balance(&t.reader), 989 * XLM); // 980 + 9
+    assert!(t.ink.is_owned(&buyer, &id));
+    assert!(!t.ink.is_owned(&t.reader, &id));
+    assert_eq!(t.ink.listings(&id).len(), 0);
+    assert_eq!(t.wave.points_of(&1, &t.author), 75); // Purchase 50 + Resale 25
+    assert_eq!(t.ink.try_list_resale(&t.reader, &id, &XLM), Err(Ok(err(Error::NotOwner))));
+}
+
+#[test]
+fn listing_rules() {
+    let t = setup();
+    let id = publish(&t);
+    let other = Address::generate(&t.env);
+    assert_eq!(t.ink.try_list_resale(&t.reader, &id, &XLM), Err(Ok(err(Error::NotOwner))));
+    assert_eq!(t.ink.try_list_resale(&t.author, &id, &XLM), Err(Ok(err(Error::NotOwner))));
+    t.ink.buy(&t.reader, &id);
+    assert_eq!(t.ink.try_list_resale(&t.reader, &id, &0), Err(Ok(err(Error::InvalidAmount))));
+    t.ink.list_resale(&t.reader, &id, &XLM);
+    assert_eq!(t.ink.try_buy_resale(&t.reader, &id, &t.reader), Err(Ok(err(Error::SameParty))));
+    assert_eq!(t.ink.try_buy_resale(&other, &id, &t.author), Err(Ok(err(Error::NotListed))));
+    t.ink.cancel_resale(&t.reader, &id);
+    assert_eq!(t.ink.try_buy_resale(&other, &id, &t.reader), Err(Ok(err(Error::NotListed))));
+}
+
+#[test]
 fn list_novels_newest_first() {
     let t = setup();
     for _ in 0..3 {
