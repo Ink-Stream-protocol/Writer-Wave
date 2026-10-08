@@ -42,7 +42,17 @@ export const NETWORK: NetworkConfig = {
 };
 
 /** Product name — change it here to rebrand the whole app. */
-export const BRAND = "Starling";
+export const BRAND = "InkStream";
+/** The built-in wallet's name. */
+export const WALLET_NAME = "Starling";
 
-/** Deployed Starling escrow contract (C…). Set VITE_ESCROW_CONTRACT_ID after running scripts/deploy-escrow.sh. */
-export const ESCROW_CONTRACT_ID: string = (import.meta.env?.VITE_ESCROW_CONTRACT_ID as string) || "";
+const env = (k: string): string => ((import.meta.env?.[k] as string) || "").trim();
+
+/** Contract IDs — written to .env by scripts/deploy.sh. */
+export const INK_CONTRACT_ID = env("VITE_INK_CONTRACT_ID");
+export const WAVE_CONTRACT_ID = env("VITE_WAVE_CONTRACT_ID");
+export const ESCROW_CONTRACT_ID = env("VITE_ESCROW_CONTRACT_ID");
+/** Any funded account, used as the source for read-only simulations before a wallet connects. */
+export const READ_ACCOUNT = env("VITE_READ_ACCOUNT");
+/** Display symbol of the payment token InkStream was deployed with. */
+export const PAY_SYMBOL = env("VITE_PAY_SYMBOL") || "XLM";
