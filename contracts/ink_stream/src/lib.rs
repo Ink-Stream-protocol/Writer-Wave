@@ -263,6 +263,7 @@ impl InkStream {
     }
 
     // ── authors ──────────────────────────────────────────────────────────────
+
     #[allow(clippy::too_many_arguments)]
     pub fn publish(
         env: Env,
@@ -345,6 +346,7 @@ impl InkStream {
     }
 
     // ── readers ──────────────────────────────────────────────────────────────
+
     /// Buy forever. If the reader has streamed before, only the remaining difference is charged.
     pub fn buy(env: Env, reader: Address, id: u32) -> i128 {
         reader.require_auth();
@@ -449,7 +451,76 @@ impl InkStream {
         env.storage().persistent().get(&DataKey::Listings(id)).unwrap_or(Vec::new(&env))
     }
 
+    /// Start (or top up) a stream. The deposit is held by the contract and paid to the
+    /// author per second of reading.
+    pub fn start_stream(env: Env, reader: Address, id: u32, deposit: i128) {
+        reader.require_auth();
+        if deposit <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+        let n = load_novel(&env, id);
+        if owned(&env, &reader, id) {
+            panic_with_error!(&env, Error::AlreadyOwned);
+        }
+        token(&env).transfer(&reader, env.current_contract_address(), &deposit);
+        let skey = DataKey::Stream(reader.clone(), id);
+        let now = env.ledger().timestamp();
+        let s = match env.storage().persistent().get::<_, Stream>(&skey) {
+            Some(prev) if prev.active => {
+                let (mut s, n) = settle_inner(&env, prev, n);
+                put(&env, &DataKey::Novel(id), &n);
+                s.deposit += deposit;
+                s
+            }
+            Some(prev) => Stream { active: true, deposit: prev.deposit + deposit, last_settled: now, session_seconds: 0, paid: prev.paid },
+            None => Stream { active: true, deposit, last_settled: now, session_seconds: 0, paid: 0 },
+        };
+        put(&env, &skey, &s);
+        StreamStarted { id, reader, deposit }.publish(&env);
+    }
+
+    /// Pay the author what's owed so far. Anyone can call it (e.g. the author, or a keeper).
+    /// If the reader has now streamed the full price, they become the owner.
+    pub fn settle(env: Env, reader: Address, id: u32) -> i128 {
+        let skey = DataKey::Stream(reader.clone(), id);
+        let s: Stream = env.storage().persistent().get(&skey).unwrap_or_else(|| panic_with_error!(&env, Error::NoStream));
+        let before = s.paid;
+        let (s, n) = settle_inner(&env, s, load_novel(&env, id));
+        let paid_now = s.paid - before;
+        Self::finish_or_save(&env, &reader, id, s, n);
+        paid_now
+    }
+
+    /// Stop reading: settle, refund the unused deposit, and earn Wave reading-hour points.
+    pub fn stop_stream(env: Env, reader: Address, id: u32) -> i128 {
+        reader.require_auth();
+        let skey = DataKey::Stream(reader.clone(), id);
+        let s: Stream = env.storage().persistent().get(&skey).unwrap_or_else(|| panic_with_error!(&env, Error::NoStream));
+        if !s.active {
+            panic_with_error!(&env, Error::NoStream);
+        }
+        let (mut s, n) = settle_inner(&env, s, load_novel(&env, id));
+        let refund = s.deposit;
+        if refund > 0 {
+            token(&env).transfer(&env.current_contract_address(), &reader, &refund);
+        }
+        let seconds = s.session_seconds;
+        let hours = (seconds / HOUR) as u32;
+        s.deposit = 0;
+        s.active = false;
+        s.session_seconds = 0;
+        let author = n.author.clone();
+        let became_owner = Self::finish_or_save(&env, &reader, id, s, n);
+        if !became_owner {
+            wave(&env, Action::ReadHour, &reader, hours);
+            wave(&env, Action::Engagement, &author, hours);
+        }
+        StreamStopped { id, reader, seconds, refunded: refund }.publish(&env);
+        refund
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
+
     pub fn config(env: Env) -> Config {
         config(&env)
     }
@@ -485,6 +556,60 @@ impl InkStream {
 
     pub fn is_owned(env: Env, reader: Address, id: u32) -> bool {
         owned(&env, &reader, id)
+    }
+
+    pub fn stream_status(env: Env, reader: Address, id: u32) -> StreamStatus {
+        let n = load_novel(&env, id);
+        let s: Stream = env.storage().persistent().get(&DataKey::Stream(reader, id)).unwrap_or(Stream {
+            active: false, deposit: 0, last_settled: 0, session_seconds: 0, paid: 0,
+        });
+        let now = env.ledger().timestamp();
+        let (owed, extra_secs) = if s.active && now > s.last_settled {
+            let remaining_to_own = (n.price - s.paid).max(0);
+            let to_own_secs = ((remaining_to_own + n.rate - 1) / n.rate) as u64;
+            let secs = (now - s.last_settled).min((s.deposit / n.rate) as u64).min(to_own_secs);
+            ((n.rate * secs as i128).min(remaining_to_own), secs)
+        } else {
+            (0, 0)
+        };
+        StreamStatus {
+            active: s.active,
+            deposit_left: s.deposit - owed,
+            owed_now: owed,
+            session_seconds: s.session_seconds + extra_secs,
+            paid: s.paid + owed,
+            seconds_left: ((s.deposit - owed) / n.rate) as u64,
+            to_own: (n.price - s.paid - owed).max(0),
+        }
+    }
+}
+
+impl InkStream {
+    /// Saves the stream; if the reader has paid the full price, grants ownership, refunds
+    /// any leftover deposit and closes the stream. Returns true if ownership was granted.
+    fn finish_or_save(env: &Env, reader: &Address, id: u32, mut s: Stream, mut n: Novel) -> bool {
+        let skey = DataKey::Stream(reader.clone(), id);
+        if s.paid >= n.price && !owned(env, reader, id) {
+            if s.deposit > 0 {
+                token(env).transfer(&env.current_contract_address(), reader, &s.deposit);
+            }
+            let hours = (s.session_seconds / HOUR) as u32;
+            s.deposit = 0;
+            s.active = false;
+            s.session_seconds = 0;
+            n.sales += 1;
+            put(env, &skey, &s);
+            put(env, &DataKey::Novel(id), &n);
+            set_owned(env, reader, id);
+            wave(env, Action::Purchase, &n.author, 1);
+            wave(env, Action::ReadHour, reader, hours);
+            wave(env, Action::Engagement, &n.author, hours);
+            Bought { id, reader: reader.clone(), paid: s.paid, via_stream: true }.publish(env);
+            return true;
+        }
+        put(env, &skey, &s);
+        put(env, &DataKey::Novel(id), &n);
+        false
     }
 }
 
