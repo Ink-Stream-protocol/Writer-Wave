@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["writer_wave"]
+members = ["ink_stream", "writer_wave"]
 
 [workspace.dependencies]
 soroban-sdk = "28.0.0"

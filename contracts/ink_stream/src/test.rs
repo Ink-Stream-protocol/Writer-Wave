@@ -1,44 +1,68 @@
 #![cfg(test)]
-use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+extern crate std;
 
-fn setup() -> (Env, Address, Address, Address, String) {
+use super::*;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    token::{StellarAssetClient, TokenClient},
+    Address, Env, String,
+};
+use writer_wave::{WriterWave, WriterWaveClient};
+
+const T0: u64 = 1_000_000;
+const XLM: i128 = 10_000_000; // 1 token = 10^7 base units
+
+struct S<'a> {
+    env: Env,
+    ink: InkStreamClient<'a>,
+    wave: WriterWaveClient<'a>,
+    token: TokenClient<'a>,
+    author: Address,
+    reader: Address,
+}
+
+fn setup() -> S<'static> {
     let env = Env::default();
     env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = T0);
+    let admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(Address::generate(&env)).address();
+    let wave = WriterWaveClient::new(&env, &env.register(WriterWave, (admin.clone(),)));
+    let ink_id = env.register(InkStream, (admin.clone(), sac.clone(), Some(wave.address.clone())));
+    wave.set_reporter(&ink_id, &true);
+    wave.start_cycle(&String::from_str(&env, "Sprint 1"), &T0, &(T0 + 28 * DAY), &sac);
 
-    let contract_id = env.register_contract(None, InkStreamContract);
     let author = Address::generate(&env);
     let reader = Address::generate(&env);
-    let title = String::from_str(&env, "The Rust Chronicles");
+    StellarAssetClient::new(&env, &sac).mint(&reader, &(1_000 * XLM));
+    S { ink: InkStreamClient::new(&env, &ink_id), token: TokenClient::new(&env, &sac), env, wave, author, reader }
+}
 
-    (env, contract_id, author, reader, title)
+fn s(env: &Env, v: &str) -> String {
+    String::from_str(env, v)
+}
+
+fn err(e: Error) -> soroban_sdk::Error {
+    soroban_sdk::Error::from_contract_error(e as u32)
+}
+
+/// 20 XLM to own, 0.01 XLM per second (so 2,000 s of streaming = ownership), 10% royalty.
+fn publish(t: &S) -> u32 {
+    t.ink.publish(&t.author, &s(&t.env, "The Rust Chronicles"), &s(&t.env, "A borrow-checker saga"), &s(&t.env, ""), &(20 * XLM), &(XLM / 100), &1_000, &1)
+}
+
+fn at(t: &S, secs: u64) {
+    t.env.ledger().with_mut(|l| l.timestamp = T0 + secs);
 }
 
 #[test]
-fn test_publish_and_get() {
-    let (env, contract_id, author, _reader, title) = setup();
-    let client = InkStreamContractClient::new(&env, &contract_id);
-
-    client.publish(&author, &title, &1_000_000, &100);
-
-    let meta = client.get_novel(&title).unwrap();
-    assert_eq!(meta.price_full, 1_000_000);
-    assert_eq!(meta.drip_rate, 100);
-}
-
-#[test]
-fn test_buy_full_marks_owned() {
-    let (env, contract_id, author, reader, title) = setup();
-    let client = InkStreamContractClient::new(&env, &contract_id);
-
-    // Deploy a mock token and mint to reader
-    let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract_v2(token_admin.clone()).address();
-    let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
-    token_client.mint(&reader, &10_000_000);
-
-    client.publish(&author, &title, &1_000_000, &100);
-    client.buy_full(&reader, &title, &token_id);
-
-    assert!(client.is_owned(&reader, &title));
+fn list_novels_newest_first() {
+    let t = setup();
+    for _ in 0..3 {
+        publish(&t);
+    }
+    let l = t.ink.list_novels(&0, &2);
+    assert_eq!((l.get(0).unwrap().id, l.get(1).unwrap().id), (3, 2));
+    assert_eq!(t.ink.list_novels(&2, &10).len(), 1);
+    assert_eq!(t.ink.novel_count(), 3);
 }
