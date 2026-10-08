@@ -184,7 +184,7 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
   }, [signer.kind, secret]);
 
   const go = useCallback((t: Tab, p?: PayRequest) => { setPrefill(p); setTab(t); window.scrollTo(0, 0); }, []);
-  const ctx: WalletCtx = { signer, state, history: hist, historyLoading: histLoading, refresh, go, prefill };
+  const ctx: WalletCtx = { signer, state, history: hist, historyLoading: histLoading, refresh, go, prefill, openNovel: () => {} };
   const current = NAV.find((n) => n.tab === tab)!;
 
   return (
