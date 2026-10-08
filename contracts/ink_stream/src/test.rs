@@ -74,6 +74,18 @@ fn publish_and_chapters_award_wave_points_once_per_day() {
 }
 
 #[test]
+fn buy_forever_pays_author_and_records_ownership() {
+    let t = setup();
+    let id = publish(&t);
+    assert_eq!(t.ink.buy(&t.reader, &id), 20 * XLM);
+    assert_eq!(t.token.balance(&t.author), 20 * XLM);
+    assert!(t.ink.is_owned(&t.reader, &id));
+    assert_eq!(t.ink.try_buy(&t.reader, &id), Err(Ok(err(Error::AlreadyOwned))));
+    assert_eq!(t.ink.novel(&id).sales, 1);
+    assert_eq!(t.wave.points_of(&1, &t.author), 50); // Purchase
+}
+
+#[test]
 fn list_novels_newest_first() {
     let t = setup();
     for _ in 0..3 {
@@ -83,4 +95,18 @@ fn list_novels_newest_first() {
     assert_eq!((l.get(0).unwrap().id, l.get(1).unwrap().id), (3, 2));
     assert_eq!(t.ink.list_novels(&2, &10).len(), 1);
     assert_eq!(t.ink.novel_count(), 3);
+}
+
+#[test]
+fn works_without_a_wave_contract() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(Address::generate(&env)).address();
+    let ink = InkStreamClient::new(&env, &env.register(InkStream, (admin, sac.clone(), None::<Address>)));
+    let (author, reader) = (Address::generate(&env), Address::generate(&env));
+    StellarAssetClient::new(&env, &sac).mint(&reader, &100);
+    let id = ink.publish(&author, &s(&env, "T"), &s(&env, ""), &s(&env, ""), &50, &1, &0, &0);
+    ink.add_chapter(&id, &s(&env, "1"), &s(&env, "x"));
+    assert_eq!(ink.buy(&reader, &id), 50);
 }
