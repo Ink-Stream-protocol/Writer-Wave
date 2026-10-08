@@ -11,7 +11,9 @@ import type { Signer } from "../lib/signer";
 import { Icon } from "./Icon";
 import { Card, Copy, Field, Notice, fmt, short, useAction } from "./ui";
 
-export type Tab = "Home" | "Send" | "Receive" | "Scan" | "Convert" | "Cash" | "Escrow" | "Assets" | "Activity" | "Settings";
+export type Tab =
+  | "Store" | "Novel" | "Library" | "Studio" | "Wave"
+  | "Home" | "Send" | "Receive" | "Scan" | "Convert" | "Cash" | "Escrow" | "Assets" | "Activity" | "Settings";
 
 export interface WalletCtx {
   signer: Signer;
@@ -20,6 +22,7 @@ export interface WalletCtx {
   historyLoading: boolean;
   refresh: () => Promise<void>;
   go: (tab: Tab, prefill?: PayRequest) => void;
+  openNovel: (id: number) => void;
   prefill?: PayRequest;
 }
 
