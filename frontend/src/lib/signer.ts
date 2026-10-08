@@ -16,7 +16,7 @@ export function localSigner(secret: string): Signer {
   return {
     publicKey: kp.publicKey(),
     kind: "local",
-    walletName: "Built-in wallet",
+    walletName: "Starling wallet",
     async sign(xdr) {
       const tx = TransactionBuilder.fromXDR(xdr, NETWORK.passphrase);
       tx.sign(kp);

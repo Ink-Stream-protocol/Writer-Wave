@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { BRAND, NETWORK } from "./lib/config";
+import { BRAND, NETWORK, WALLET_NAME } from "./lib/config";
 import { clearKeystore, decryptSecret, loadKeystore } from "./lib/keystore";
 import { loadAccountState, loadHistory, server, type AccountState, type HistoryItem } from "./lib/stellar";
 import { localSigner, type Signer } from "./lib/signer";
@@ -14,24 +14,34 @@ import { Activity, Assets, Convert, Home, Receive, Scan, Send, type Tab, type Wa
 import { Card, Copy, Field, Notice, short, useAction } from "./components/ui";
 import "./App.css";
 
+const Bookstore = lazy(() => import("./components/ink/Bookstore").then((m) => ({ default: m.Bookstore })));
+const Library = lazy(() => import("./components/ink/Bookstore").then((m) => ({ default: m.Library })));
+const NovelPage = lazy(() => import("./components/ink/NovelPage").then((m) => ({ default: m.NovelPage })));
+const Studio = lazy(() => import("./components/ink/Studio").then((m) => ({ default: m.Studio })));
+const WavePage = lazy(() => import("./components/ink/WavePage").then((m) => ({ default: m.WavePage })));
 const EscrowScreen = lazy(() => import("./components/EscrowScreen").then((m) => ({ default: m.EscrowScreen })));
 const AnchorScreen = lazy(() => import("./components/AnchorScreen").then((m) => ({ default: m.AnchorScreen })));
 
 if (isPopup) document.documentElement.classList.add("popup");
 
 const AUTO_LOCK_MS = 15 * 60 * 1000;
-const NAV: { tab: Tab; icon: string; label: string; mobile?: boolean }[] = [
-  { tab: "Home", icon: "home", label: "Home", mobile: true },
-  { tab: "Send", icon: "send", label: "Send", mobile: true },
-  { tab: "Receive", icon: "receive", label: "Receive", mobile: true },
-  { tab: "Scan", icon: "scan", label: "Scan to pay", mobile: true },
-  { tab: "Convert", icon: "swap", label: "Convert", mobile: true },
-  { tab: "Cash", icon: "bank", label: "Cash in / out" },
-  { tab: "Escrow", icon: "shield", label: "Safe pay" },
-  { tab: "Assets", icon: "assets", label: "Assets" },
-  { tab: "Activity", icon: "activity", label: "Activity" },
-  { tab: "Settings", icon: "settings", label: "Settings" },
+const NAV: { tab: Tab; icon: string; label: string; group: string; mobile?: boolean }[] = [
+  { tab: "Store", icon: "book", label: "Bookstore", group: "Read", mobile: true },
+  { tab: "Library", icon: "assets", label: "My library", group: "Read", mobile: true },
+  { tab: "Studio", icon: "pen", label: "Author Studio", group: "Write", mobile: true },
+  { tab: "Wave", icon: "trend", label: "Writer's Wave", group: "Earn", mobile: true },
+  { tab: "Home", icon: "wallet", label: "Wallet", group: WALLET_NAME, mobile: true },
+  { tab: "Send", icon: "send", label: "Send", group: WALLET_NAME },
+  { tab: "Receive", icon: "receive", label: "Receive", group: WALLET_NAME },
+  { tab: "Scan", icon: "scan", label: "Scan to pay", group: WALLET_NAME },
+  { tab: "Convert", icon: "swap", label: "Convert", group: WALLET_NAME },
+  { tab: "Cash", icon: "bank", label: "Cash in / out", group: WALLET_NAME },
+  { tab: "Escrow", icon: "shield", label: "Safe pay", group: WALLET_NAME },
+  { tab: "Assets", icon: "assets", label: "Assets", group: WALLET_NAME },
+  { tab: "Activity", icon: "activity", label: "Activity", group: WALLET_NAME },
+  { tab: "Settings", icon: "settings", label: "Settings", group: "" },
 ];
+const TITLES: Partial<Record<Tab, string>> = { Home: "Wallet", Novel: "Novel" };
 
 function useTheme() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -123,8 +133,9 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
 }) {
   const [tab, setTab] = useState<Tab>(() => {
     const t = new URLSearchParams(location.search).get("tab");
-    return NAV.some((n) => n.tab === t) ? (t as Tab) : "Home";
+    return NAV.some((n) => n.tab === t) ? (t as Tab) : "Store";
   });
+  const [novelId, setNovelId] = useState<number | null>(null);
   const [prefill, setPrefill] = useState<PayRequest | undefined>();
   const [state, setState] = useState<AccountState | null>(null);
   const [hist, setHist] = useState<HistoryItem[]>([]);
@@ -184,15 +195,20 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
   }, [signer.kind, secret]);
 
   const go = useCallback((t: Tab, p?: PayRequest) => { setPrefill(p); setTab(t); window.scrollTo(0, 0); }, []);
-  const ctx: WalletCtx = { signer, state, history: hist, historyLoading: histLoading, refresh, go, prefill, openNovel: () => {} };
-  const current = NAV.find((n) => n.tab === tab)!;
+  const openNovel = useCallback((id: number) => { setNovelId(id); setTab("Novel"); window.scrollTo(0, 0); }, []);
+  const ctx: WalletCtx = { signer, state, history: hist, historyLoading: histLoading, refresh, go, prefill, openNovel };
+  const title = TITLES[tab] ?? NAV.find((n) => n.tab === tab)?.label ?? tab;
+  const lazyFallback = <p className="muted">Loading…</p>;
 
   return (
     <div className="shell">
       <aside className="side">
         <div className="brand"><Logo /> {BRAND}</div>
-        {NAV.map((n) => (
-          <button key={n.tab} className={`side-btn ${tab === n.tab ? "on" : ""}`} onClick={() => go(n.tab)}><Icon name={n.icon} size={18} /> {n.label}</button>
+        {NAV.map((n, i) => (
+          <div key={n.tab}>
+            {n.group && n.group !== NAV[i - 1]?.group && <div className="side-group">{n.group}</div>}
+            <button className={`side-btn ${tab === n.tab || (tab === "Novel" && n.tab === "Store") ? "on" : ""}`} onClick={() => go(n.tab)}><Icon name={n.icon} size={18} /> {n.label}</button>
+          </div>
         ))}
         <div className="side-foot">
           <span className={`pill ${NETWORK.name === "testnet" ? "warn" : ""}`} style={{ alignSelf: "flex-start" }}>{NETWORK.name}</span>
@@ -201,7 +217,7 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
       </aside>
       <main className="main">
         <div className="topbar">
-          <h1>{tab === "Home" ? "Overview" : current.label}</h1>
+          <h1>{title}</h1>
           <div className="row">
             <div className="acct-chip">
               <span className="dot" />
@@ -214,6 +230,13 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
         </div>
         <Notice kind="error">{netError}</Notice>
         <div style={{ marginTop: netError ? 12 : 0 }}>
+          <Suspense fallback={lazyFallback}>
+            {tab === "Store" && <Bookstore ctx={ctx} />}
+            {tab === "Library" && <Library ctx={ctx} />}
+            {tab === "Novel" && novelId !== null && <NovelPage key={novelId} ctx={ctx} id={novelId} />}
+            {tab === "Studio" && <Studio ctx={ctx} />}
+            {tab === "Wave" && <WavePage ctx={ctx} />}
+          </Suspense>
           {tab === "Home" && <Home ctx={ctx} />}
           {tab === "Send" && <Send key={JSON.stringify(prefill ?? {})} ctx={ctx} />}
           {tab === "Receive" && <Receive ctx={ctx} />}
@@ -228,7 +251,7 @@ function WalletApp({ signer, secret, onDisconnect, onRemoveLocal, theme, setThem
       </main>
       <nav className="bottom-nav">
         {NAV.filter((n) => n.mobile).concat(NAV.find((n) => n.tab === "Settings")!).map((n) => (
-          <button key={n.tab} className={tab === n.tab ? "on" : ""} onClick={() => go(n.tab)}><Icon name={n.icon} size={20} />{n.tab === "Scan" ? "Scan" : n.label}</button>
+          <button key={n.tab} className={tab === n.tab ? "on" : ""} onClick={() => go(n.tab)}><Icon name={n.icon} size={20} />{({ Store: "Books", Library: "Library", Studio: "Write", Wave: "Wave", Home: "Wallet", Settings: "Settings" } as Record<string, string>)[n.tab] ?? n.label}</button>
         ))}
       </nav>
       {toast && <div className="toast"><b>{toast}</b></div>}

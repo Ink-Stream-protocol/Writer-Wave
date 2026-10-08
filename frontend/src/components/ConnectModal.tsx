@@ -4,6 +4,7 @@ import { clearKeystore, decryptSecret, encryptSecret, loadKeystore, saveKeystore
 import { localSigner, type Signer } from "../lib/signer";
 import { connectWallet, listWallets, type WalletOption } from "../lib/wallets";
 import { isExtension } from "../lib/platform";
+import { WALLET_NAME } from "../lib/config";
 import { Icon } from "./Icon";
 import { Copy, Field, Modal, Notice, short, useAction } from "./ui";
 
@@ -38,7 +39,7 @@ export function ConnectModal({ onClose, onConnected }: { onClose: () => void; on
     <Modal title={title} onClose={onClose} back={view !== "list" ? () => { a.setError(""); setView("list"); } : undefined}>
       {view === "list" && (
         <>
-          <div className="group-label">Built-in wallet</div>
+          <div className="group-label">{WALLET_NAME} wallet (built in)</div>
           {ks && (
             <button className="wallet-btn" onClick={() => setView("unlock")}>
               <span className="wi"><Icon name="lock" size={18} /></span>
