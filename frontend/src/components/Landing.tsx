@@ -1,37 +1,42 @@
-import { BRAND, NETWORK } from "../lib/config";
+import { useEffect, useState } from "react";
+import { BRAND, NETWORK, PAY_SYMBOL, WALLET_NAME } from "../lib/config";
+import { inkEnabled, listNovels, type Novel } from "../lib/ink";
 import { Icon, Logo } from "./Icon";
+import { Cover, PriceChips } from "./ink/common";
 
 const TICKER = [
-  ["XLM", "Stellar Lumens"], ["USDC", "USD Coin"], ["EURC", "Euro Coin"], ["QR", "Scan to pay"],
-  ["DEX", "Built-in exchange"], ["5s", "Settlement"], ["SEP", "Bank on/off-ramps"], ["RS", "Soroban smart contracts"], ["$", "Fees under a cent"],
+  ["⏱", "Pay by the second"], ["∞", "Own forever"], ["↺", "Resell with royalties"], ["🌊", "Writer's Wave"],
+  ["RS", "Soroban smart contracts"], ["QR", "Scan to pay"], ["5s", "Settlement"], ["$", "Fees under a cent"],
 ];
 
 const FEATURES = [
-  { icon: "qr", title: "Scan to pay, scan to get paid", body: "Show a code with the amount already in it, or point your camera at someone else's. Codes use the SEP-7 standard, so LOBSTR, xBull and other Stellar wallets can read them too." },
-  { icon: "bank", title: "Cash in and cash out", body: "Move between your bank and Stellar through regulated anchors (SEP-24). The anchor's fee is shown before you start, and the final rate before you confirm." },
-  { icon: "bolt", title: "Settles in seconds", body: "Payments finalize in about 5 seconds for a fraction of a cent. Send XLM, USDC or any Stellar asset to anyone, anywhere." },
-  { icon: "swap", title: "Convert in app", body: "Swap one asset for another on Stellar's built-in exchange, with the best route found for you and a quote you can read before you confirm." },
-  { icon: "wallet", title: "Any Stellar wallet", body: "Freighter, xBull, Albedo, LOBSTR, Hana and more are detected automatically. No wallet yet? Create one here in seconds." },
-  { icon: "shield", title: "Safe pay with smart contracts", body: "Buying from someone you don't know? Lock the money in a Soroban smart contract, written in Rust. The seller gets paid when you confirm delivery, or you get it back after the deadline." },
+  { icon: "activity", title: "Stream to read", body: "Open any novel and pay the author per second while you read — stop any time and the rest of your deposit comes straight back. No $20 barrier." },
+  { icon: "key", title: "Stream-to-own", body: "Every second you stream counts toward the book's price. Reach it and the book is yours — buying later only costs the difference." },
+  { icon: "trend", title: "The Writer's Wave", body: "Recurring Writing Sprints. Authors earn points for new chapters and weekly streaks, readers for hours read. At the end, the reward pool is split by points." },
+  { icon: "swap", title: "Resell, author still earns", body: "Done with a book? List your copy. Whoever buys it pays you — and the author's royalty is enforced by the smart contract." },
+  { icon: "wallet", title: `${WALLET_NAME} wallet built in`, body: "Create a wallet in seconds or connect Freighter, xBull, Albedo, LOBSTR and more. Send, receive, scan to pay and convert — all in one app." },
+  { icon: "shield", title: "No middlemen", body: "Payments go straight from reader to author on Stellar. Open-source Rust contracts on Soroban; nobody can freeze or skim your earnings." },
 ];
 
 const STEPS = [
-  { t: "Connect wallet", d: "Link the Stellar wallet you already use, or create one in seconds." },
-  { t: "Add money", d: "Deposit from your bank through an anchor, or receive from anyone." },
-  { t: "Pay or get paid", d: "Send to any address, or scan a code to pay." },
-  { t: "Cash out", d: "Withdraw to your bank account through an anchor." },
+  { t: "Connect", d: `Create a ${WALLET_NAME} wallet or connect the one you use.` },
+  { t: "Read", d: "Start streaming any novel, or buy it forever." },
+  { t: "Write", d: "Publish chapters and get paid every second you're read." },
+  { t: "Earn", d: "Collect Wave points and claim your share of each sprint's pool." },
 ];
 
 const FAQ = [
-  { q: "Is it free?", a: "The app is free. Stellar network fees are a tiny fraction of a cent per transaction. Anchors charge their own deposit/withdrawal fee, which is shown before you start." },
-  { q: "Do you hold my money?", a: "No. The app is non-custodial: funds live in your Stellar account, and only your wallet can sign transactions. Built-in wallets are encrypted with your password on your own device." },
-  { q: "How does Safe pay work?", a: "Your payment is held by an open-source Soroban smart contract on Stellar — not by us. Only you can release it to the seller; the seller can refund you at any time; and if the seller never delivers you can reclaim it yourself after the deadline." },
-  { q: "Which wallets work?", a: "Any wallet supported by Stellar Wallets Kit — Freighter, xBull, Albedo, LOBSTR, Hana, Rabet and more — plus a built-in wallet you can create here." },
-  { q: "Why does a new account need XLM?", a: "Stellar accounts must hold a small reserve (1 XLM, plus 0.5 XLM per asset you add). On testnet you can get free test XLM with one click." },
-  { q: "Is this real money?", a: NETWORK.name === "testnet" ? "This deployment runs on the Stellar testnet, so all balances are test funds with no real value. It's safe to try everything." : "Yes, this deployment uses Stellar mainnet. Double-check addresses before sending." },
+  { q: "How much does streaming cost?", a: "Each author sets an hourly price — often well under a dollar an hour. You put down a small refundable deposit; you only pay for the seconds you actually read." },
+  { q: "What is the Writer's Wave?", a: "Inspired by the Drips Wave model: every few weeks there's a Writing Sprint with a reward pool funded by the ecosystem. Authors, readers and open-source contributors earn points; when the sprint ends, everyone claims a share proportional to their points — automatically, on-chain." },
+  { q: "Do I need crypto experience?", a: `No. Create a ${WALLET_NAME} wallet in the app, ${NETWORK.name === "testnet" ? "get free test funds with one click" : "add funds"}, and start reading. You can also cash in and out through Stellar anchors.` },
+  { q: "Who holds my money?", a: "You do. The app is non-custodial, and streaming deposits are held by an open-source smart contract that can only pay the author for time read or refund you." },
+  { q: "Is this real money?", a: NETWORK.name === "testnet" ? "This deployment runs on the Stellar testnet — everything is free test funds, so try anything." : "Yes, this deployment uses Stellar mainnet." },
 ];
 
 export function Landing({ onStart, onDemo }: { onStart: () => void; onDemo: () => void }) {
+  const [featured, setFeatured] = useState<Novel[]>([]);
+  useEffect(() => { if (inkEnabled()) listNovels(0, 6).then(setFeatured).catch(() => {}); }, []);
+
   return (
     <div className="landing">
       <header className="nav">
@@ -39,103 +44,121 @@ export function Landing({ onStart, onDemo }: { onStart: () => void; onDemo: () =
           <div className="brand"><Logo /> {BRAND}</div>
           <nav className="nav-links">
             <a href="#features">Features</a>
+            <a href="#wave">Writer's Wave</a>
             <a href="#how">How it works</a>
             <a href="#faq">FAQ</a>
           </nav>
-          <button className="btn btn-primary" onClick={onStart}>Get started</button>
+          <button className="btn btn-primary" onClick={onStart}>Start reading</button>
         </div>
       </header>
 
       <section className="section hero">
         <div className="grid-bg" />
         <div style={{ position: "relative" }}>
-          <span className="pill"><span className="dot" /> Payments on Stellar{NETWORK.name === "testnet" ? " · Testnet" : ""}</span>
-          <h1>Money that <span className="hl">moves</span><br />as fast as you do.</h1>
-          <p className="lead">Send and receive dollars and crypto in seconds, get paid by scanning a code, convert between assets, and cash out to your bank — all on the Stellar network.</p>
+          <span className="pill"><span className="dot" /> The streaming bookstore on Stellar{NETWORK.name === "testnet" ? " · Testnet" : ""}</span>
+          <h1>Reading is <span className="hl">streaming.</span></h1>
+          <p className="lead">Pay authors by the second while you read, or own the book forever. Writers get paid instantly and earn more every Writing Sprint — all with one wallet.</p>
           <div className="hero-cta">
-            <button className="btn btn-primary" onClick={onStart}>Get started <Icon name="arrow" size={16} /></button>
-            <button className="btn btn-ghost" onClick={onDemo}>See how it works</button>
+            <button className="btn btn-primary" onClick={onStart}>Start reading <Icon name="arrow" size={16} /></button>
+            <button className="btn btn-ghost" onClick={onStart}><Icon name="pen" size={16} /> Publish your novel</button>
           </div>
           <div className="hero-badges">
-            <span><Icon name="wallet" size={16} /> Any Stellar wallet</span>
-            <span><Icon name="bolt" size={16} /> 5-second settlement</span>
-            <span><Icon name="qr" size={16} /> Scan to pay</span>
+            <span><Icon name="activity" size={16} /> ~$0.36 an hour</span>
+            <span><Icon name="key" size={16} /> Stream-to-own</span>
+            <span><Icon name="trend" size={16} /> Earn Wave points</span>
           </div>
         </div>
         <div className="mock" aria-hidden>
           <div className="phone">
             <div className="between small"><b>{BRAND}</b><span className="dot" /></div>
-            <div className="bal"><small className="muted">Total balance</small><b>$2,458.32</b></div>
-            <div className="acts"><div>↑ Send</div><div>↓ Receive</div><div>⇄ Convert</div><div>▣ Scan</div></div>
-            <div className="small muted">Recent</div>
-            <div className="between small"><span>From GDX4…K2PA</span><span style={{ color: "var(--ok)" }}>+120 USDC</span></div>
-            <div className="between small"><span>Converted XLM → USDC</span><span>45.10</span></div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div className="cover" style={{ width: 70, background: "linear-gradient(150deg,#8b5cf6,#2b1660)" }}><div className="cover-text"><span className="cover-title" style={{ fontSize: ".6rem" }}>The Rust Chronicles</span></div></div>
+              <div className="small"><b>The Rust Chronicles</b><div className="muted">Chapter 7</div></div>
+            </div>
+            <div className="meter"><span className="small"><span className="dot pulse" /> Streaming</span><b style={{ fontSize: "1.3rem" }}>0.0412 {PAY_SYMBOL}</b><small className="muted">14 min · 62% to own</small></div>
+            <div className="small muted">Writer's Wave</div>
+            <div className="between small"><span>Your points</span><b style={{ color: "var(--accent2)" }}>1,250</b></div>
+            <div className="between small"><span>Est. share</span><b>48.2 {PAY_SYMBOL}</b></div>
           </div>
-          <div className="float f1"><small className="muted">Cashed out</small><b>$480.00</b><small style={{ color: "var(--ok)" }}>✓ Sent to your bank</small></div>
-          <div className="float f2">
-            <small className="muted">Scan to pay</small>
-            <div className="qr-mini">{"11011010101101100101110101011".split("").slice(0, 25).map((c, i) => <i key={i} className={c === "0" ? "o" : ""} />)}</div>
-          </div>
-          <div className="float f3"><b style={{ fontSize: ".95rem" }}>⚡ 250 USDC sent</b><small className="muted">Settled in 4.8s</small></div>
+          <div className="float f1"><small className="muted">Author earned</small><b>+3.60 {PAY_SYMBOL}</b><small style={{ color: "var(--ok)" }}>✓ paid per second</small></div>
+          <div className="float f2"><small className="muted">Chapter published</small><b style={{ color: "var(--accent2)" }}>+150 pts</b><small className="muted">week 2 streak</small></div>
+          <div className="float f3"><b style={{ fontSize: ".95rem" }}>📖 You own this book</b><small className="muted">streamed the full price</small></div>
         </div>
       </section>
 
       <div className="ticker" aria-hidden>
         <div className="ticker-track">
-          {[...TICKER, ...TICKER].map(([c, n], i) => (
-            <div className="ticker-item" key={i}><span className="coin">{c}</span>{n}</div>
-          ))}
+          {[...TICKER, ...TICKER].map(([c, n], i) => <div className="ticker-item" key={i}><span className="coin">{c}</span>{n}</div>)}
         </div>
       </div>
 
+      {featured.length > 0 && (
+        <section className="section" style={{ paddingBottom: 0 }}>
+          <div className="section-title"><h2>On the shelves</h2></div>
+          <div className="book-grid">
+            {featured.map((n) => (
+              <button key={n.id} className="book" onClick={onStart}><Cover novel={n} /><div className="book-meta"><b>{n.title}</b><PriceChips novel={n} /></div></button>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="section" id="features">
         <div className="section-title">
-          <h2>Everything you need, nothing you don't</h2>
-          <p>Six features, built properly, instead of twenty that half work.</p>
+          <h2>Removes the $20 barrier</h2>
+          <p>Most readers won't pay upfront for a book they might not finish. So don't make them.</p>
         </div>
         <div className="features">
           {FEATURES.map((f) => (
-            <div className="feature" key={f.title}>
-              <div className="ico"><Icon name={f.icon} /></div>
-              <h3>{f.title}</h3>
-              <p>{f.body}</p>
-            </div>
+            <div className="feature" key={f.title}><div className="ico"><Icon name={f.icon} /></div><h3>{f.title}</h3><p>{f.body}</p></div>
           ))}
         </div>
       </section>
 
-      <section className="section" id="how">
-        <div className="section-title">
-          <h2>One app. Four steps.</h2>
-          <p>From your bank account to anyone in the world, and back again.</p>
+      <section className="section" id="wave">
+        <div className="cta" style={{ textAlign: "left", display: "grid", gap: 24, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+          <div>
+            <span className="pill"><Icon name="trend" size={12} /> The Writer's Wave</span>
+            <h2 style={{ marginTop: 14 }}>Write consistently. Get rewarded.</h2>
+            <p style={{ margin: "14px 0 0" }}>Recurring Writing Sprints with a shared reward pool. Points are recorded by the smart contracts the moment you earn them — no spreadsheets, no trust required.</p>
+          </div>
+          <ul className="list">
+            <li><span className="coin">+100</span><div className="grow">Publish a chapter <div className="muted small">once per novel per day</div></div></li>
+            <li><span className="coin">+50×</span><div className="grow">Keep a weekly streak <div className="muted small">bonus grows every week</div></div></li>
+            <li><span className="coin">+50</span><div className="grow">Read for an hour / sell a copy</div></li>
+            <li><span className="coin">PR</span><div className="grow">Contribute to InkStream <div className="muted small">100–1000 pts per merged issue</div></div></li>
+          </ul>
         </div>
+      </section>
+
+      <section className="section" id="how">
+        <div className="section-title"><h2>One app. Four steps.</h2></div>
         <div className="steps">
-          {STEPS.map((s, i) => (
-            <div className="step" key={s.t}><div className="n">{i + 1}</div><h3>{s.t}</h3><p>{s.d}</p></div>
-          ))}
+          {STEPS.map((s, i) => <div className="step" key={s.t}><div className="n">{i + 1}</div><h3>{s.t}</h3><p>{s.d}</p></div>)}
         </div>
       </section>
 
       <section className="section" id="faq">
         <div className="section-title"><h2>Questions, answered</h2></div>
-        <div className="faq">
-          {FAQ.map((f) => <details key={f.q}><summary>{f.q}</summary><p>{f.a}</p></details>)}
-        </div>
+        <div className="faq">{FAQ.map((f) => <details key={f.q}><summary>{f.q}</summary><p>{f.a}</p></details>)}</div>
       </section>
 
       <section className="section">
         <div className="cta">
-          <h2>Ready to move your money?</h2>
-          <p>Connect a wallet and send your first payment in under a minute. No account to open, nothing to download.</p>
-          <button className="btn btn-primary" onClick={onStart}>Get started <Icon name="arrow" size={16} /></button>
+          <h2>Your next favourite book is a second away.</h2>
+          <p>Create a wallet, grab free test funds and start reading — or publish your first chapter today.</p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <button className="btn btn-primary" onClick={onStart}>Get started <Icon name="arrow" size={16} /></button>
+            <button className="btn btn-ghost" onClick={onDemo}>How it works</button>
+          </div>
         </div>
       </section>
 
       <footer className="footer">
         <div className="footer-inner">
           <div className="brand"><Logo size={24} /> {BRAND}</div>
-          <span>Non-custodial payments on Stellar. Built with stellar-sdk & Stellar Wallets Kit.</span>
-          <span>© {new Date().getFullYear()} {BRAND}</span>
+          <span>Open-source streaming bookstore · Soroban (Stellar) · {WALLET_NAME} wallet</span>
+          <span>MIT · © {new Date().getFullYear()} {BRAND}</span>
         </div>
       </footer>
     </div>
