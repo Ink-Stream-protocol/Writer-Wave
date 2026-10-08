@@ -86,6 +86,81 @@ fn buy_forever_pays_author_and_records_ownership() {
 }
 
 #[test]
+fn stream_pays_per_second_and_refunds_the_rest() {
+    let t = setup();
+    let id = publish(&t);
+    t.ink.start_stream(&t.reader, &id, &(10 * XLM)); // enough for 1,000 s
+    assert_eq!(t.token.balance(&t.reader), 990 * XLM);
+
+    at(&t, 300);
+    let st = t.ink.stream_status(&t.reader, &id);
+    assert_eq!(st.owed_now, 3 * XLM);
+    assert_eq!(st.session_seconds, 300);
+    assert_eq!(st.to_own, 17 * XLM);
+
+    // the author can pull earnings mid-stream
+    assert_eq!(t.ink.settle(&t.reader, &id), 3 * XLM);
+    assert_eq!(t.token.balance(&t.author), 3 * XLM);
+
+    at(&t, 500);
+    assert_eq!(t.ink.stop_stream(&t.reader, &id), 5 * XLM); // 500 s × 0.01 = 5 paid, 5 refunded
+    assert_eq!(t.token.balance(&t.author), 5 * XLM);
+    assert_eq!(t.token.balance(&t.reader), 995 * XLM);
+    assert!(!t.ink.stream_status(&t.reader, &id).active);
+    assert_eq!(t.ink.novel(&id).seconds_read, 500);
+}
+
+#[test]
+fn stream_stops_charging_when_deposit_runs_out() {
+    let t = setup();
+    let id = publish(&t);
+    t.ink.start_stream(&t.reader, &id, &XLM); // 100 s worth
+    at(&t, 10_000);
+    assert_eq!(t.ink.stream_status(&t.reader, &id).deposit_left, 0);
+    assert_eq!(t.ink.stop_stream(&t.reader, &id), 0);
+    assert_eq!(t.token.balance(&t.author), XLM);
+}
+
+#[test]
+fn streaming_the_full_price_grants_ownership() {
+    let t = setup();
+    let id = publish(&t);
+    t.ink.start_stream(&t.reader, &id, &(50 * XLM));
+    at(&t, 5_000); // would be 50 XLM, but capped at the 20 XLM price
+    t.ink.settle(&t.reader, &id);
+    assert!(t.ink.is_owned(&t.reader, &id));
+    assert_eq!(t.token.balance(&t.author), 20 * XLM);
+    assert_eq!(t.token.balance(&t.reader), 980 * XLM); // 30 refunded
+    // 2,000 s of paid reading ≈ 0 full hours → only Purchase points for the author
+    assert_eq!(t.wave.points_of(&1, &t.author), 50);
+    assert_eq!(t.ink.novel(&id).sales, 1);
+}
+
+#[test]
+fn buying_after_streaming_only_charges_the_difference() {
+    let t = setup();
+    let id = publish(&t);
+    t.ink.start_stream(&t.reader, &id, &(10 * XLM));
+    at(&t, 600); // 6 XLM streamed
+    assert_eq!(t.ink.buy(&t.reader, &id), 14 * XLM);
+    assert_eq!(t.token.balance(&t.author), 20 * XLM);
+    assert_eq!(t.token.balance(&t.reader), 980 * XLM);
+    assert!(t.ink.is_owned(&t.reader, &id));
+}
+
+#[test]
+fn reading_hours_earn_points_for_reader_and_author() {
+    let t = setup();
+    // cheap novel: 1,000 XLM price, 0.001 XLM/s → 2 h costs 7.2 XLM
+    let id = t.ink.publish(&t.author, &s(&t.env, "Long Read"), &s(&t.env, ""), &s(&t.env, ""), &(1_000 * XLM), &(XLM / 1_000), &1_000, &0);
+    t.ink.start_stream(&t.reader, &id, &(10 * XLM));
+    at(&t, 2 * HOUR + 59);
+    t.ink.stop_stream(&t.reader, &id);
+    assert_eq!(t.wave.points_of(&1, &t.reader), 100); // 2 × ReadHour(50)
+    assert_eq!(t.wave.points_of(&1, &t.author), 40); // 2 × Engagement(20)
+}
+
+#[test]
 fn resale_listing_pays_royalty_and_moves_ownership() {
     let t = setup();
     let id = publish(&t);
@@ -119,6 +194,23 @@ fn listing_rules() {
     assert_eq!(t.ink.try_buy_resale(&other, &id, &t.author), Err(Ok(err(Error::NotListed))));
     t.ink.cancel_resale(&t.reader, &id);
     assert_eq!(t.ink.try_buy_resale(&other, &id, &t.reader), Err(Ok(err(Error::NotListed))));
+}
+
+#[test]
+fn validation() {
+    let t = setup();
+    let e = &t.env;
+    let (a, b) = (s(e, "T"), s(e, ""));
+    assert_eq!(t.ink.try_publish(&t.author, &a, &b, &b, &0, &1, &0, &0), Err(Ok(err(Error::InvalidPrice))));
+    assert_eq!(t.ink.try_publish(&t.author, &a, &b, &b, &10, &0, &0, &0), Err(Ok(err(Error::InvalidRate))));
+    assert_eq!(t.ink.try_publish(&t.author, &a, &b, &b, &10, &11, &0, &0), Err(Ok(err(Error::InvalidRate))));
+    assert_eq!(t.ink.try_publish(&t.author, &a, &b, &b, &10, &1, &5_001, &0), Err(Ok(err(Error::InvalidRoyalty))));
+    let long = String::from_str(e, &"x".repeat(121));
+    assert_eq!(t.ink.try_publish(&t.author, &long, &b, &b, &10, &1, &0, &0), Err(Ok(err(Error::TooLong))));
+    assert_eq!(t.ink.try_novel(&7), Err(Ok(err(Error::NovelNotFound))));
+    let id = publish(&t);
+    assert_eq!(t.ink.try_start_stream(&t.author, &id, &XLM), Err(Ok(err(Error::AlreadyOwned))));
+    assert_eq!(t.ink.try_stop_stream(&t.reader, &id), Err(Ok(err(Error::NoStream))));
 }
 
 #[test]
