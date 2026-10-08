@@ -279,6 +279,14 @@ impl WriterWave {
         id
     }
 
+    /// Award points for off-chain work (merged PRs, docs, community…) in the live sprint.
+    pub fn award(env: Env, user: Address, points: u64) {
+        admin(&env).require_auth();
+        let mut c = live_cycle(&env).unwrap_or_else(|| panic_with_error!(&env, Error::NoActiveCycle));
+        add_points(&env, &mut c, &user, Action::Contribution, points);
+        put(&env, &DataKey::Cycle(c.id), &c);
+    }
+
     /// Called by a trusted reporter contract. Returns points added (0 if no sprint is live).
     pub fn record(env: Env, reporter: Address, action: Action, user: Address, units: u32) -> u64 {
         reporter.require_auth();
