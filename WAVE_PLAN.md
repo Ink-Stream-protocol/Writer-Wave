@@ -2,13 +2,13 @@
 
 ## What is InkStream?
 
-InkStream is a decentralized bookstore built on Soroban (Stellar) and Drips Network. Readers pay authors by the second while reading, or buy a novel permanently as an on-chain asset. The project is open-source and designed for community contribution through the Drips Wave program.
+InkStream is a decentralized bookstore built entirely on Soroban (Stellar). Readers pay authors by the second while reading (stream-to-own), or buy a novel permanently as an on-chain asset. The project is open-source and designed for community contribution through the Drips Wave program — and runs its own on-chain Writer's Wave for authors and readers (`contracts/writer_wave`).
 
 ---
 
 ## How We Use the Wave
 
-InkStream runs sprint cycles of **4 weeks**. Each cycle opens a batch of scoped GitHub issues across five tracks. Contributors pick up issues, submit PRs, and earn Wave Points. At the end of each cycle, points are tallied and contributors receive a proportional share of the reward pool.
+InkStream runs sprint cycles of **4 weeks**. Each cycle opens a batch of scoped GitHub issues across five tracks. Contributors pick up issues, submit PRs, and earn Wave Points. Merged-PR points are awarded on-chain by the sprint admin (`writer_wave.award`), alongside the points authors and readers earn automatically. At the end of each cycle, everyone claims a proportional share of the reward pool from the app's **Writer's Wave** page.
 
 ---
 
@@ -29,33 +29,31 @@ Soroban smart contract work in Rust. These issues touch `contracts/ink_stream/sr
 ---
 
 ### `track: streaming`
-TypeScript work in `streaming/src/`. These issues wire up the real Drips SDK and improve stream reliability.
+Per-second streaming lives in `contracts/ink_stream` (`start_stream`, `settle`, `stop_stream`) and its client in `frontend/src/lib/ink.ts`.
 
 **Examples:**
-- Replace the mock `DripsClient` stub with real `@drips-network/sdk` calls in `streamClient.ts`
-- Add stream analytics: track total USDC streamed per session and expose it to the UI
-- Implement retry logic when a stream fails to start due to network error
-- Write unit tests for `authorList.ts` weight validation
-- Add a `getStreamStatus()` helper that returns live stream state
+- Add an optional keeper script that calls `settle` for long-running streams
+- Auto-stop streams after N minutes of reader inactivity (UI prompt + `stop_stream`)
+- Stream analytics: total streamed per novel/session, charts in Author Studio
+- Support a USDC payment token deployment alongside XLM
+- Explore Drips (EVM) interoperability for authors who also have Drips lists
 
-**Skill level:** Intermediate TypeScript, some Web3/EVM knowledge helpful
+**Skill level:** Intermediate TypeScript and/or Rust
 
 ---
 
 ### `track: frontend`
-Next.js 14 + Tailwind UI work in `frontend/src/`. These issues improve the reader and author experience.
+React 19 + Vite UI work in `frontend/src/` (website + Chrome extension). These issues improve the reader and author experience.
 
 **Examples:**
-- Integrate Freighter wallet in `BuyButton.tsx` to sign real Soroban transactions
 - Build an author dashboard page showing earnings, reader count, and stream history
-- Add dark mode toggle with `next-themes`
 - Implement a reading progress bar that persists across sessions via `localStorage`
 - Build a search and filter UI for the bookstore homepage
 - Add PDF/EPUB export for owned novels
 - Make the reading UI fully mobile-responsive
 - Add a "Proof-of-Read" badge display for readers who streamed > 1 hour
 
-**Skill level:** Beginner–Intermediate React/Next.js, Tailwind
+**Skill level:** Beginner–Intermediate React + TypeScript
 
 ---
 
@@ -63,11 +61,11 @@ Next.js 14 + Tailwind UI work in `frontend/src/`. These issues improve the reade
 Wave mechanics — point tracking, leaderboard, and reward distribution logic.
 
 **Examples:**
-- Build a Wave Points leaderboard page (`/leaderboard`) showing top contributors and readers
-- Implement on-chain point tracking: emit events when a reader streams > 1 hour
-- Create an author "Consistency Points" tracker (chapter published per week = 500 pts)
-- Build the reward pool distribution UI showing each contributor's share
-- Write the Wave cycle reset script that snapshots points at end of sprint
+- Leaderboard history across sprints (indexer reading `wave/points` events)
+- A GitHub Action that proposes `award` transactions from merged PRs' `wave-bounty` labels
+- Sponsor page: who funded each pool, with links
+- Experiment with multipliers (e.g. first-time authors) via `set_points`
+- Sweep unclaimed dust into the next sprint's pool
 
 **Skill level:** Intermediate full-stack, some smart contract knowledge
 
@@ -77,12 +75,11 @@ Wave mechanics — point tracking, leaderboard, and reward distribution logic.
 DevOps, CI/CD, and developer tooling.
 
 **Examples:**
-- Set up GitHub Actions to build and test the Soroban contract on every PR
-- Add a testnet faucet integration so new readers can get XLM to try the app
-- Write a contract deployment script with environment variable injection
+- Mainnet deployment guide and checklist
+- Contract upgrade flow (`update_current_contract_wasm`) with admin
 - Add Prettier + ESLint config across the frontend and streaming packages
-- Set up Vitest for the streaming package with coverage reporting
-- Write a `docker-compose.yml` for local development
+- Add Vitest coverage reporting for `frontend/src/lib`
+- Local devnet with `stellar container start` + seeded demo novels
 
 **Skill level:** Beginner–Intermediate DevOps/CI
 
@@ -93,8 +90,7 @@ Documentation, guides, and content.
 
 **Examples:**
 - Write a "How to Publish Your First Novel" guide for authors
-- Add JSDoc comments to all exported functions in `streaming/src/`
-- Create a CONTRIBUTING.md with branch naming conventions and PR checklist
+- Add JSDoc comments to all exported functions in `frontend/src/lib/`
 - Document the Wave Points system with examples in the README
 - Write a architecture deep-dive blog post for the Drips ecosystem
 
