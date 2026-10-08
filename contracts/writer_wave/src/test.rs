@@ -90,3 +90,19 @@ fn admin_can_tune_point_values() {
     assert_eq!(s.wave.point_values().get(3).unwrap(), 40);
     assert_eq!(s.wave.points_of(&id, &user), 40);
 }
+
+#[test]
+fn cycles_cannot_overlap_and_funding_closes_at_end() {
+    let s = setup();
+    let id = sprint(&s);
+    let name = String::from_str(&s.env, "Sprint 2");
+    assert_eq!(s.wave.try_start_cycle(&name, &(T0 + WEEK), &(T0 + 5 * WEEK), &s.token.address), Err(Ok(err(Error::Overlap))));
+    assert_eq!(s.wave.try_start_cycle(&name, &T0, &T0, &s.token.address), Err(Ok(err(Error::InvalidWindow))));
+    let id2 = s.wave.start_cycle(&name, &(T0 + 4 * WEEK), &(T0 + 8 * WEEK), &s.token.address);
+    assert_eq!(id2, 2);
+    s.env.ledger().with_mut(|l| l.timestamp = T0 + 4 * WEEK);
+    let sponsor = Address::generate(&s.env);
+    s.sac.mint(&sponsor, &10);
+    assert_eq!(s.wave.try_fund(&sponsor, &id, &10), Err(Ok(err(Error::CycleEnded))));
+    assert_eq!(s.wave.live().unwrap().id, 2);
+}

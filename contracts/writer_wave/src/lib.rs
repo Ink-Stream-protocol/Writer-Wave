@@ -287,6 +287,23 @@ impl WriterWave {
         put(&env, &DataKey::Cycle(c.id), &c);
     }
 
+    // ── anyone ───────────────────────────────────────────────────────────────
+    /// Add tokens to a sprint's reward pool (sponsors, the ecosystem, readers…).
+    pub fn fund(env: Env, funder: Address, cycle_id: u32, amount: i128) {
+        funder.require_auth();
+        if amount <= 0 {
+            panic_with_error!(&env, Error::InvalidAmount);
+        }
+        let mut c = get_cycle(&env, cycle_id);
+        if env.ledger().timestamp() >= c.end {
+            panic_with_error!(&env, Error::CycleEnded);
+        }
+        token::Client::new(&env, &c.token).transfer(&funder, env.current_contract_address(), &amount);
+        c.pool += amount;
+        put(&env, &DataKey::Cycle(cycle_id), &c);
+        PoolFunded { cycle: cycle_id, funder, amount }.publish(&env);
+    }
+
     /// Called by a trusted reporter contract. Returns points added (0 if no sprint is live).
     pub fn record(env: Env, reporter: Address, action: Action, user: Address, units: u32) -> u64 {
         reporter.require_auth();
