@@ -1,337 +1,153 @@
-# ✍️ InkStream — The Streaming Bookstore
+# ✍️ InkStream: the streaming bookstore
 
-> **Reading is Streaming.** InkStream is the first publishing platform where readers pay authors by the second — or buy a novel as a permanent on-chain asset. Built on **Soroban (Stellar)** and **Drips Network**.
+**Reading is streaming.** InkStream is an open-source, decentralized bookstore on **Stellar / Soroban**. Readers pay authors **by the second** while they read, or buy a novel as a permanent on-chain asset. Authors get paid instantly and earn more through **The Writer's Wave**: recurring Writing Sprints with a shared reward pool.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-indigo.svg)](LICENSE)
-[![Drips Wave](https://img.shields.io/badge/Drips-Wave%20Project-teal)](https://drips.network)
-[![Built on Stellar](https://img.shields.io/badge/Built%20on-Stellar-blue)](https://stellar.org)
+Everything runs on Stellar with **one wallet**. The app has the **Starling** wallet built in, and readers can also connect Freighter, xBull, Albedo, LOBSTR, Hana and others.
 
 ---
 
-## 🌊 What is InkStream?
+## 🌊 The problem: the $20 barrier
 
-InkStream is an open-source, decentralized bookstore that solves the biggest problem in digital publishing: **the $20 barrier**.
+Most readers won't pay up front for a book they might not finish. InkStream removes that:
 
-Most readers won't pay upfront for a book they might not finish. InkStream removes that friction entirely. A reader can open any novel and start paying `$0.0001 per second` — roughly `$0.36 per hour`. If they love it, one click upgrades them to permanent ownership via a Soroban smart contract. If they stop reading, they stop paying. Zero risk, zero middlemen.
+| Mode | How it works |
+|---|---|
+| **Stream to read** | You put down a small refundable deposit, and the author earns per second while you read (for example 1 XLM/hour). When you stop, the rest of the deposit comes back. |
+| **Stream-to-own** ✨ | Every second you stream counts toward the price. Once you've streamed the full price, the book is yours. Buying later only costs the difference. |
+| **Buy forever** | One payment straight to the author, with ownership recorded on-chain. |
+| **Resell** | List your copy for sale. The buyer pays you, and the author's royalty (set by the author, up to 50%) is enforced by the contract. |
 
-### The Hybrid Protocol
+## 🏆 The Writer's Wave
 
-| Mode | Technology | What happens |
-|------|-----------|--------------|
-| **Buy Forever** | Soroban smart contract | Lump-sum payment → author instantly. NFT-like ownership stored on-chain. |
-| **Stream to Read** | Drips Network | Funds drip wallet → author per second. Pauses when you switch tabs. |
-| **Resell** | Soroban smart contract | Transfer ownership to another reader. Author earns 10% royalty automatically. |
+InkStream adopts the **Drips Wave** model. Every few weeks a **Writing Sprint** runs with a reward pool that anyone can fund (sponsors, publishers, fans, the ecosystem). Points are recorded **on-chain, automatically**, the moment they're earned:
 
----
+| Action | Who | Points (default, the admin can tune them) |
+|---|---|---|
+| Publish a chapter (counts once per novel per day, so it can't be spammed) | Author | **100** |
+| Weekly streak: at least one chapter in consecutive weeks | Author | **+50 × streak length** (4 weeks ≈ 800 pts) |
+| Sell a copy (buy forever or stream-to-own) | Author | **50** |
+| Your book is resold | Author | **25** (plus the royalty) |
+| Stream a full hour | Reader | **50** per hour |
+| An hour of your book is read | Author | **20** per reader-hour |
+| Close a GitHub issue / merged PR | Contributor | **100–1000**, awarded by the admin |
+
+When the sprint ends, everyone claims `pool × your points ÷ total points` straight from the app. No spreadsheets, and no one needs to be trusted to pay out.
+
+```
+Readers ──(stream / buy)──► Authors ──(publish chapters)──┐
+   │                                                      ▼
+   └────(hours read)────► writer_wave contract ◄── ink_stream reports points
+                                   ▲                       │
+ Sponsors ──(fund pool)────────────┘    Contributors ◄─(admin awards for PRs)
+                                   │
+                          sprint ends → everyone claims a pro-rata share
+```
 
 ## 🏗 Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        InkStream Stack                          │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              Frontend  (Next.js 14 + Tailwind)           │  │
-│  │                                                          │  │
-│  │   /                  → Bookstore listing                 │  │
-│  │   /novel/[title]     → Buy or Stream modal               │  │
-│  │   <BuyButton />      → Calls Soroban buy_full()          │  │
-│  │   <ReadingStream />  → Manages Drips stream lifecycle    │  │
-│  └──────────────┬───────────────────────┬───────────────────┘  │
-│                 │                       │                       │
-│        Stellar SDK                 Drips SDK                    │
-│                 │                       │                       │
-│  ┌──────────────▼──────────┐  ┌────────▼──────────────────┐   │
-│  │  Soroban Smart Contract  │  │   Drips Protocol (EVM)    │   │
-│  │  contracts/ink_stream    │  │   streaming/src/          │   │
-│  │                          │  │                           │   │
-│  │  publish()               │  │  createStream()           │   │
-│  │  buy_full()              │  │  stream.pause()           │   │
-│  │  resell()                │  │  stream.resume()          │   │
-│  │  is_owned()              │  │  upsertDripList()         │   │
-│  └──────────────────────────┘  └───────────────────────────┘   │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              shared/  (types + config)                   │  │
-│  │   Novel · ReadSession · WavePoints · SOROBAN_NETWORK     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Directory Structure
-
-```
 Writer-Wave/
-├── contracts/
-│   ├── Cargo.toml                  # Workspace manifest
-│   └── ink_stream/
-│       ├── Cargo.toml
-│       └── src/
-│           ├── lib.rs              # Contract: publish, buy_full, resell
-│           └── test.rs             # Unit tests (soroban testutils)
-├── streaming/
-│   ├── package.json
-│   ├── tsconfig.json
+├── contracts/                 Rust · soroban-sdk 28
+│   ├── ink_stream/            publish · add_chapter · buy · start/stop_stream · settle
+│   │                          list_resale · buy_resale · views   → reports Wave points
+│   ├── writer_wave/           sprints · fund · record (reporters) · award · claim · standings
+│   └── escrow/                "Safe pay" for the Starling wallet
+├── frontend/                  React 19 + Vite + TypeScript (website + Chrome extension)
 │   └── src/
-│       ├── streamClient.ts         # Start/pause/stop Drips streams
-│       ├── authorList.ts           # Manage author support lists
-│       └── index.ts
-├── frontend/
-│   ├── package.json
-│   ├── next.config.js
-│   └── src/
-│       ├── app/
-│       │   ├── layout.tsx
-│       │   ├── page.tsx            # Bookstore home
-│       │   └── novel/[title]/
-│       │       └── page.tsx        # Buy / Stream modal
-│       ├── components/
-│       │   ├── BuyButton.tsx       # Soroban tx flow
-│       │   └── ReadingStream.tsx   # Drips stream UI
-│       └── lib/
-│           └── sorobanClient.ts    # Contract call helpers
-└── shared/
-    ├── types.ts                    # Novel, ReadSession, WavePoints
-    └── config.ts                   # Network constants
+│       ├── components/ink/    Bookstore · NovelPage (buy/stream/read/resell) · Studio · WavePage
+│       ├── components/        Starling wallet: Send · Receive (QR) · Scan to pay · Convert (DEX)
+│       │                      Cash in/out (SEP-24 anchors) · Safe pay · Assets · Activity
+│       └── lib/               soroban.ts (generic RPC) · ink.ts · wave.ts · escrow.ts · wallets.ts
+├── scripts/deploy.sh          build → deploy all contracts → wire up → start Sprint 1 → write .env
+└── .github/workflows/         CI (cargo test + clippy + wasm, vitest + builds) · GitHub Pages
 ```
 
----
+**Why everything is on Stellar:** the first version planned Drips streams on an EVM chain. That would have meant a second wallet, a bridge, and gas on another network. InkStream now streams natively in a Soroban contract instead: one wallet, roughly 5-second finality, and fees under a cent. The Writer's Wave keeps the Drips Wave idea of rewarding contributors from a shared pool, and puts the points and payouts on-chain.
 
-## 🔗 The Soroban Contract
+### Contract highlights
 
-The contract lives in `contracts/ink_stream/src/lib.rs`. It handles three things: publishing, buying, and reselling.
+- **Per-second settlement.** `owed = rate × seconds`, capped by the deposit and by the remaining price. Anyone can call `settle` (for example the author, to pull earnings mid-stream).
+- **Safe by construction.** Each function authorizes the right party with `require_auth`. Funds only move from reader to author, refunds go back to the reader, and nobody else can touch deposits.
+- **Wave reporting is best-effort.** If the Wave isn't configured or no sprint is running, buying and streaming still work.
+- **Typed errors, events and storage TTL.** Contracts use `#[contracterror]`, events for indexers, and persistent-storage TTL extension.
+- **Tests:** 27 unit and integration tests, including `ink_stream` and `writer_wave` running together.
 
-### Data Model
+> Chapter text is stored on-chain, so it's public ledger data. The app gates reading in the interface. Encrypted or IPFS-hosted chapters are on the roadmap.
 
-```rust
-#[contracttype]
-#[derive(Clone)]
-pub struct NovelMeta {
-    pub author: Address,
-    pub price_full: i128,  // one-time purchase price (stroops)
-    pub drip_rate: i128,   // per-second rate for Drips integration
-    pub title: String,
-}
-```
+## 🚀 Getting started
 
-### Publishing a Novel
+**Prerequisites:**
 
-```rust
-pub fn publish(env: Env, author: Address, title: String, price: i128, rate: i128) {
-    author.require_auth(); // Freighter wallet signs this
-    let meta = NovelMeta { author, price_full: price, drip_rate: rate, title: title.clone() };
-    env.storage().instance().set(&DataKey::Novel(title), &meta);
-}
-```
-
-### Buying Permanently
-
-```rust
-pub fn buy_full(env: Env, reader: Address, title: String, token_addr: Address) {
-    reader.require_auth();
-    let meta: NovelMeta = env.storage().instance()
-        .get(&DataKey::Novel(title.clone())).expect("novel not found");
-
-    // Atomic: transfer price → author, then mark owned
-    token::Client::new(&env, &token_addr)
-        .transfer(&reader, &meta.author, &meta.price_full);
-
-    env.storage().persistent()
-        .set(&DataKey::Owned(reader, title), &true);
-}
-```
-
-### Resale with Automatic Royalties
-
-```rust
-pub fn resell(env: Env, seller: Address, buyer: Address, title: String,
-              sale_price: i128, token_addr: Address) {
-    // 10% royalty to author, 90% to seller — enforced on-chain
-    let royalty_amount = sale_price * royalty_bps as i128 / 10_000;
-    token.transfer(&buyer, &meta.author, &royalty_amount);
-    token.transfer(&buyer, &seller, &sale_price - royalty_amount);
-    // Transfer ownership atomically
-}
-```
-
-### Deploy
+- Node 20+
+- Rust with the wasm target: `rustup target add wasm32v1-none`
+- [Stellar CLI](https://developers.stellar.org/docs/tools/cli): `cargo install --locked stellar-cli`
 
 ```bash
-# Build
-cd contracts
-cargo build --target wasm32-unknown-unknown --release
+git clone https://github.com/Ink-Stream-protocol/Writer-Wave.git && cd Writer-Wave
 
-# Deploy to testnet
-stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/ink_stream.wasm \
-  --source <YOUR_SECRET_KEY> \
-  --network testnet
-```
+# 1. Contracts: test, build, deploy to testnet, start Sprint 1, write frontend/.env
+./scripts/deploy.sh
 
----
-
-## 🌊 The Drips Integration
-
-When a reader chooses "Stream to Read", the frontend calls `startReadingStream()` from `streaming/src/streamClient.ts`.
-
-```typescript
-import { startReadingStream } from "../streaming/src/streamClient";
-
-const stream = await startReadingStream(walletSigner, {
-  receiverAddress: novel.authorEvm,
-  tokenAddress: USDC_ADDRESS,
-  amountPerSecond: novel.dripRateRaw, // e.g. 100n (100 wei/s)
-});
-
-// Stream auto-pauses when reader switches tabs (visibilitychange listener)
-// Stop it when they navigate away:
-await stream.stop();
-```
-
-### DripList — Supporting Multiple Authors
-
-Readers can build a curated list of authors they support continuously:
-
-```typescript
-import { upsertDripList } from "../streaming/src/authorList";
-
-await upsertDripList(signer, {
-  name: "My Favorite Authors",
-  entries: [
-    { authorAddress: "0xAuthor1...", weight: 600_000 }, // 60%
-    { authorAddress: "0xAuthor2...", weight: 400_000 }, // 40%
-  ],
-});
-// Weights must sum to 1_000_000
-```
-
----
-
-## 🏆 The Writer's Wave
-
-InkStream is designed to participate in the **Drips Wave** open-source funding program. Here's how the circular economy works:
-
-```
-  Readers ──(stream USDC)──► Authors
-     │                          │
-     │                          └──(fund)──► Developer Wave Pool
-     │                                              │
-     └──────────────────────────────────────────────┘
-              Contributors earn Wave Points
-              Points → share of reward pool
-```
-
-### Wave Point Sources
-
-| Action | Points |
-|--------|--------|
-| Author publishes a chapter per week for 4 weeks | 500 pts |
-| Reader streams > 1 hour on a novel | 50 pts |
-| Developer closes a GitHub issue | 100–500 pts |
-| Novel gets resold (secondary market activity) | 25 pts |
-
-### For Contributors
-
-This repo will have **~125 open issues** across these tracks:
-
-- **`track: contract`** — Soroban contract features (royalty config, chapter-level access, NFT metadata)
-- **`track: drips`** — Drips integration (real SDK wiring, stream analytics, DripList UI)
-- **`track: frontend`** — UI features (dark mode, PDF export, reading progress, search)
-- **`track: wave`** — Wave mechanics (point tracking, leaderboard, reward distribution)
-- **`track: infra`** — CI/CD, contract deployment scripts, testnet faucet integration
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- [Rust + wasm32 target](https://www.rust-lang.org/tools/install): `rustup target add wasm32-unknown-unknown`
-- [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools/cli/install-stellar-cli): `cargo install stellar-cli`
-- Node.js 20+
-
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/your-org/Writer-Wave.git
-cd Writer-Wave
-
-# Frontend deps
-cd frontend && npm install && cd ..
-
-# Drips deps
-cd drips && npm install && cd ..
-```
-
-### 2. Configure Environment
-
-```bash
-cp frontend/.env.example frontend/.env.local
-# Fill in NEXT_PUBLIC_CONTRACT_ID after deploying the contract
-```
-
-### 3. Build & Deploy the Contract
-
-```bash
-cd contracts
-cargo build --target wasm32-unknown-unknown --release
-stellar contract deploy \
-  --wasm ink_stream/target/wasm32-unknown-unknown/release/ink_stream.wasm \
-  --source <YOUR_SECRET_KEY> \
-  --network testnet
-```
-
-### 4. Run the Frontend
-
-```bash
+# 2. App
 cd frontend
-npm run dev
-# → http://localhost:3000
+npm install
+npm run dev            # http://localhost:5173
 ```
 
-### 5. Run Contract Tests
+In the app:
+
+1. **Start reading**, then **Create a new wallet**.
+2. Click **Get free test XLM**.
+3. Publish a novel in **Author Studio**, read and stream in the **Bookstore**, and watch your points in **Writer's Wave**.
+
+To see the sprint admin panel (start sprints, award contribution points, tune point values), import the admin key in the app's connect dialog. Get the key with `stellar keys show inkstream-admin`.
+
+### Tests
 
 ```bash
-cd contracts
-cargo test
+cd contracts && cargo test                 # 27 contract tests
+cd frontend  && npm test                   # 29 client tests
 ```
 
----
+### Chrome extension
 
-## 🗺 Roadmap (Open Issues)
+`cd frontend && npm run build:extension`. Then open `chrome://extensions`, turn on Developer mode, click **Load unpacked** and choose `frontend/dist-extension`.
 
-The following are planned as GitHub issues for Wave contributors:
+## 🗺 Roadmap: open Wave issues
 
-- [ ] Freighter wallet integration in `BuyButton.tsx`
-- [ ] Real Drips SDK wiring in `ReadingStream.tsx`
-- [ ] Chapter-level access control in Soroban contract
-- [ ] On-chain novel registry fetch for homepage
-- [ ] Wave points leaderboard page
-- [ ] PDF/EPUB export feature
-- [ ] Dark mode toggle
-- [ ] Author dashboard (earnings, reader stats)
-- [ ] Proof-of-Read badge system (stream duration → NFT)
-- [ ] Mobile-responsive reading UI
-- [ ] Testnet faucet integration for new readers
-- [ ] CI/CD pipeline (GitHub Actions)
+**Contracts**
 
----
+- Chapter-level pricing
+- Encrypted chapters (reader key exchange)
+- IPFS/Arweave content with on-chain hashes
+- Proof-of-Read badges as NFTs
+- Configurable sprint pools in USDC
 
-## 🤝 Contributing
+**Wave**
 
-1. Browse open issues labeled `good first issue` or `wave-bounty`
-2. Comment on the issue to claim it
-3. Fork → branch → PR
-4. Earn Wave Points for merged contributions
+- A sprint snapshot / indexer service
+- Leaderboard history
+- Quadratic or multiplier scoring experiments
+- Sponsor pages
 
-All contributors who merge a PR before the Wave cycle ends share the reward pool proportional to their points.
+**Frontend**
 
----
+- Author analytics charts
+- EPUB/PDF export for owners
+- Reading progress sync
+- Search by author
+- i18n (Yoruba, Hausa, Igbo, French…)
+
+**Infra**
+
+- Mainnet deployment guide
+- Docker devnet (`stellar container start`)
+- Contract upgrade flow
+
+See [WAVE_PLAN.md](WAVE_PLAN.md) for tracks, point values and the sprint cycle, and [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## 📄 License
 
-MIT — see [LICENSE](LICENSE).
-
----
+MIT. See [LICENSE](LICENSE).
 
 > *"Drips aren't just for software developers — they're for all creators."*
