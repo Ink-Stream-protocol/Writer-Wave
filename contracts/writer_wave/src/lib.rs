@@ -237,6 +237,7 @@ impl WriterWave {
     }
 
     // ── admin ────────────────────────────────────────────────────────────────
+
     pub fn set_admin(env: Env, new_admin: Address) {
         admin(&env).require_auth();
         env.storage().instance().set(&DataKey::Admin, &new_admin);
@@ -288,6 +289,7 @@ impl WriterWave {
     }
 
     // ── anyone ───────────────────────────────────────────────────────────────
+
     /// Add tokens to a sprint's reward pool (sponsors, the ecosystem, readers…).
     pub fn fund(env: Env, funder: Address, cycle_id: u32, amount: i128) {
         funder.require_auth();
@@ -335,22 +337,33 @@ impl WriterWave {
         pts
     }
 
+    /// Claim your share of an ended sprint's pool.
+    pub fn claim(env: Env, user: Address, cycle_id: u32) -> i128 {
+        user.require_auth();
+        let mut c = get_cycle(&env, cycle_id);
+        if env.ledger().timestamp() < c.end {
+            panic_with_error!(&env, Error::CycleNotEnded);
+        }
+        let ckey = DataKey::Claimed(cycle_id, user.clone());
+        if env.storage().persistent().has(&ckey) {
+            panic_with_error!(&env, Error::AlreadyClaimed);
+        }
+        let amount = Self::share(&env, &c, &user);
+        if amount <= 0 {
+            panic_with_error!(&env, Error::NothingToClaim);
+        }
+        put(&env, &ckey, &true);
+        c.claimed += amount;
+        put(&env, &DataKey::Cycle(cycle_id), &c);
+        token::Client::new(&env, &c.token).transfer(&env.current_contract_address(), &user, &amount);
+        RewardClaimed { cycle: cycle_id, user, amount }.publish(&env);
+        amount
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
+
     pub fn admin(env: Env) -> Address {
         admin(&env)
-    }
-
-    /// Point values in `Action` order: Chapter, Streak, Purchase, Resale, ReadHour, Engagement, Contribution.
-    pub fn point_values(env: Env) -> Vec<u32> {
-        let mut v = Vec::new(&env);
-        for a in ACTIONS {
-            v.push_back(points_for(&env, a));
-        }
-        v
-    }
-
-    pub fn is_reporter(env: Env, reporter: Address) -> bool {
-        env.storage().instance().has(&DataKey::Reporter(reporter))
     }
 
     pub fn cycle_count(env: Env) -> u32 {
@@ -369,6 +382,19 @@ impl WriterWave {
         env.storage().persistent().get(&DataKey::UserPoints(cycle_id, user)).unwrap_or(0)
     }
 
+    /// What `user` could claim (or would get if the sprint ended now with the current pool).
+    pub fn claimable(env: Env, cycle_id: u32, user: Address) -> i128 {
+        let c = get_cycle(&env, cycle_id);
+        if env.storage().persistent().has(&DataKey::Claimed(cycle_id, user.clone())) {
+            return 0;
+        }
+        Self::share(&env, &c, &user)
+    }
+
+    pub fn has_claimed(env: Env, cycle_id: u32, user: Address) -> bool {
+        env.storage().persistent().has(&DataKey::Claimed(cycle_id, user))
+    }
+
     /// Everyone with points in a sprint (unsorted; the first 1,000 participants are listed).
     pub fn standings(env: Env, cycle_id: u32) -> Vec<Standing> {
         let list: Vec<Address> = env.storage().persistent().get(&DataKey::Participants(cycle_id)).unwrap_or(Vec::new(&env));
@@ -378,6 +404,29 @@ impl WriterWave {
             out.push_back(Standing { user, points });
         }
         out
+    }
+
+    /// Point values in `Action` order: Chapter, Streak, Purchase, Resale, ReadHour, Engagement, Contribution.
+    pub fn point_values(env: Env) -> Vec<u32> {
+        let mut v = Vec::new(&env);
+        for a in ACTIONS {
+            v.push_back(points_for(&env, a));
+        }
+        v
+    }
+
+    pub fn is_reporter(env: Env, reporter: Address) -> bool {
+        env.storage().instance().has(&DataKey::Reporter(reporter))
+    }
+}
+
+impl WriterWave {
+    fn share(env: &Env, c: &Cycle, user: &Address) -> i128 {
+        if c.total_points == 0 {
+            return 0;
+        }
+        let pts: u64 = env.storage().persistent().get(&DataKey::UserPoints(c.id, user.clone())).unwrap_or(0);
+        c.pool * pts as i128 / c.total_points as i128
     }
 }
 

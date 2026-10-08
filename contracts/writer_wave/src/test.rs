@@ -39,6 +39,39 @@ fn sprint(s: &S) -> u32 {
 }
 
 #[test]
+fn full_cycle_points_fund_and_pro_rata_claims() {
+    let s = setup();
+    let id = sprint(&s);
+    let (alice, bob, sponsor) = (Address::generate(&s.env), Address::generate(&s.env), Address::generate(&s.env));
+
+    // alice: 1 chapter (100) ; bob: 2 read-hours (2 × 50) + 1 contribution award of 200
+    assert_eq!(s.wave.record(&s.reporter, &Action::Chapter, &alice, &1), 100);
+    assert_eq!(s.wave.record(&s.reporter, &Action::ReadHour, &bob, &2), 100);
+    s.wave.award(&bob, &200);
+    assert_eq!(s.wave.points_of(&id, &alice), 100);
+    assert_eq!(s.wave.points_of(&id, &bob), 300);
+
+    s.sac.mint(&sponsor, &4_000);
+    s.wave.fund(&sponsor, &id, &4_000);
+    let c = s.wave.cycle(&id);
+    assert_eq!((c.pool, c.total_points, c.participants), (4_000, 400, 2));
+    assert_eq!(s.wave.claimable(&id, &alice), 1_000);
+    assert_eq!(s.wave.standings(&id).len(), 2);
+
+    // can't claim before the end
+    assert_eq!(s.wave.try_claim(&alice, &id), Err(Ok(err(Error::CycleNotEnded))));
+    s.env.ledger().with_mut(|l| l.timestamp = T0 + 4 * WEEK);
+
+    assert_eq!(s.wave.claim(&alice, &id), 1_000);
+    assert_eq!(s.wave.claim(&bob, &id), 3_000);
+    assert_eq!(s.token.balance(&alice), 1_000);
+    assert_eq!(s.token.balance(&bob), 3_000);
+    assert_eq!(s.wave.try_claim(&alice, &id), Err(Ok(err(Error::AlreadyClaimed))));
+    assert_eq!(s.wave.claimable(&id, &alice), 0);
+    assert_eq!(s.wave.cycle(&id).claimed, 4_000);
+}
+
+#[test]
 fn weekly_chapter_streak_earns_bonus() {
     let s = setup();
     let id = sprint(&s);
@@ -105,4 +138,13 @@ fn cycles_cannot_overlap_and_funding_closes_at_end() {
     s.sac.mint(&sponsor, &10);
     assert_eq!(s.wave.try_fund(&sponsor, &id, &10), Err(Ok(err(Error::CycleEnded))));
     assert_eq!(s.wave.live().unwrap().id, 2);
+}
+
+#[test]
+fn nothing_to_claim_without_points() {
+    let s = setup();
+    let id = sprint(&s);
+    s.env.ledger().with_mut(|l| l.timestamp = T0 + 5 * WEEK);
+    let nobody = Address::generate(&s.env);
+    assert_eq!(s.wave.try_claim(&nobody, &id), Err(Ok(err(Error::NothingToClaim))));
 }
