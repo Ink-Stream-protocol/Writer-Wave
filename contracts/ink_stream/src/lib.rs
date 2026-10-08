@@ -344,6 +344,40 @@ impl InkStream {
         index
     }
 
+    // ── readers ──────────────────────────────────────────────────────────────
+    /// Buy forever. If the reader has streamed before, only the remaining difference is charged.
+    pub fn buy(env: Env, reader: Address, id: u32) -> i128 {
+        reader.require_auth();
+        let mut n = load_novel(&env, id);
+        if owned(&env, &reader, id) {
+            panic_with_error!(&env, Error::AlreadyOwned);
+        }
+        let skey = DataKey::Stream(reader.clone(), id);
+        let mut credit = 0;
+        if let Some(s) = env.storage().persistent().get::<_, Stream>(&skey) {
+            let (mut s, n2) = settle_inner(&env, s, n);
+            n = n2;
+            credit = s.paid;
+            if s.deposit > 0 {
+                token(&env).transfer(&env.current_contract_address(), &reader, &s.deposit);
+            }
+            s.deposit = 0;
+            s.active = false;
+            put(&env, &skey, &s);
+        }
+        let due = (n.price - credit).max(0);
+        if due > 0 {
+            token(&env).transfer(&reader, &n.author, &due);
+        }
+        n.sales += 1;
+        n.earned += due;
+        put(&env, &DataKey::Novel(id), &n);
+        set_owned(&env, &reader, id);
+        wave(&env, Action::Purchase, &n.author, 1);
+        Bought { id, reader, paid: due, via_stream: false }.publish(&env);
+        due
+    }
+
     // ── views ────────────────────────────────────────────────────────────────
     pub fn config(env: Env) -> Config {
         config(&env)
